@@ -1,0 +1,47 @@
+/* Painel do sistema (dono): reaproveita o visual do atendimento. */
+.kpis.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 720px) { .kpis.three { grid-template-columns: 1fr; } }
+
+.est-name { display: flex; flex-direction: column; gap: 2px; }
+.est-name b { font-weight: 600; }
+.est-name a { font-size: 13px; color: var(--brand); text-decoration: none; word-break: break-all; }
+.est-name a:hover { text-decoration: underline; }
+.doc-tag { display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 6px; background: var(--surface-3); font-size: 11px; font-weight: 700; color: var(--ink-2); }
+.cell-small { font-size: 13px; color: var(--ink-2); max-width: 260px; }
+.row-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+
+.store-card { padding: 18px 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px 24px; }
+.store-card dt { font-size: 12px; font-weight: 600; color: var(--ink-2); text-transform: uppercase; letter-spacing: .04em; }
+.store-card dd { margin: 2px 0 0; font-size: 15px; word-break: break-word; }
+.store-card .link-line { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.section-title { font-size: 20px; margin-top: 6px; }
+
+.slug-row { display: flex; align-items: stretch; border: 1px solid var(--line-2); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.slug-row input { border: 0; border-radius: 0; min-width: 0; flex: 1; }
+.slug-prefix { display: flex; align-items: center; padding: 0 10px; background: var(--surface-3); color: var(--ink-2); font-size: 13px; white-space: nowrap; border-right: 1px solid var(--line-2); }
+@media (max-width: 560px) { .slug-prefix { display: none; } }
+
+.admin-box { margin: 16px 0 0; padding: 12px 14px 14px; border: 1px dashed var(--line-2); border-radius: 12px; }
+.admin-box legend { padding: 0 6px; font-weight: 700; font-size: 14px; }
+.admin-box p { margin: 0 0 4px; }
+
+.status-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+.no-admin { color: var(--danger-ink); font-weight: 600; }
+.missing { border: 1px dashed var(--warn); background: var(--warn-soft); color: var(--warn-ink); border-radius: 8px; padding: 3px 8px; font: 600 12px var(--sans); cursor: pointer; }
+.missing:hover { background: #FFE9BF; }
+
+.plan-card { padding: 16px 20px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.plan-card .plan-main { display: flex; flex-direction: column; gap: 2px; }
+.plan-card .plan-main b { font-size: 18px; }
+.plan-card .plan-facts { display: flex; gap: 18px; flex-wrap: wrap; color: var(--ink-2); font-size: 14px; }
+.plan-card .plan-facts b { color: var(--ink); }
+.plan-card .btn { margin-left: auto; }
+.billing-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; padding: 3px 10px; border-radius: 999px; }
+.billing-chip.on { background: var(--ok-soft); color: var(--ok-ink); }
+.billing-chip.test { background: var(--warn-soft); color: var(--warn-ink); }
+.billing-chip.off { background: var(--surface-3); color: var(--ink-2); }
+.lic-cell { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
+.lic-cell small { color: var(--ink-2); font-size: 12px; }
+.role-pick.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.check-field { flex-direction: row !important; align-items: center; gap: 10px; }
+.check-field input { width: auto; }

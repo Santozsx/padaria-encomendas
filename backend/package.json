@@ -1,0 +1,26 @@
+{
+  "name": "padaria-encomendas-api",
+  "version": "1.0.0",
+  "description": "API do sistema de encomendas da padaria (Express + Supabase)",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=20.6"
+  },
+  "scripts": {
+    "dev": "node --watch --env-file=.env src/server.js",
+    "start": "node --env-file=.env src/server.js",
+    "test": "node --test",
+    "staff:create": "node --env-file=.env scripts/create-staff.js",
+    "platform:admin": "node --env-file=.env scripts/set-platform-admin.js",
+    "start:cloud": "node src/server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^8.0.0",
+    "zod": "^3.23.8"
+  }
+}

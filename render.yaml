@@ -1,0 +1,35 @@
+# Deploy na Render (https://render.com) — "Blueprint".
+# Render > New > Blueprint > escolha o repositório do GitHub com este projeto.
+# Os valores marcados com sync: false são pedidos na hora (nunca ficam no Git).
+services:
+  - type: web
+    name: padaria-encomendas
+    runtime: node
+    plan: starter            # o plano gratuito "dorme" sem uso: ruim para pedidos e webhooks
+    region: virginia
+    buildCommand: cd backend && npm ci --omit=dev
+    startCommand: cd backend && npm run start:cloud
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "1"
+      - key: NODE_VERSION
+        value: "22"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: PUBLIC_URL
+        sync: false
+      - key: ASAAS_API_KEY
+        sync: false
+      - key: ASAAS_ENV
+        value: sandbox
+      - key: ASAAS_WEBHOOK_TOKEN
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: ""

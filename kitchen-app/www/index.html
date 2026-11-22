@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <title>Cozinha — Produção</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap">
+  <link rel="stylesheet" href="css/kitchen.css">
+</head>
+<body>
+  <!-- Conectando (aparece enquanto fala com o servidor) -->
+  <main id="loading-view" class="center-view">
+    <div class="panel-box">
+      <h1>Cozinha</h1>
+      <p class="hint" id="loading-text">Conectando…</p>
+      <button class="kbtn ghost" type="button" id="loading-change" data-nav>Trocar servidor</button>
+    </div>
+  </main>
+
+  <!-- Configuração (1ª execução no APK) -->
+  <main id="setup-view" class="center-view hidden">
+    <form id="setup-form" class="panel-box">
+      <h1>Configurar tela da cozinha</h1>
+      <label>Endereço do servidor (API)
+        <input name="api" type="text" inputmode="url" required autocapitalize="off" spellcheck="false" placeholder="192.168.0.10:3000" data-nav>
+      </label>
+      <p class="hint">Na rede de casa/da loja: o IP do computador que roda o servidor (o iniciar.bat mostra "Outros aparelhos da mesma rede"). Na internet: o endereço do site, ex.: https://padaria.seudominio.com.br</p>
+      <p class="error" id="setup-error" role="alert"></p>
+      <button class="kbtn primary" type="submit" data-nav>Salvar</button>
+    </form>
+  </main>
+
+  <!-- Login -->
+  <main id="login-view" class="center-view hidden">
+    <form id="login-form" class="panel-box">
+      <h1>Cozinha</h1>
+      <label>E-mail <input name="email" type="email" required autocomplete="username" data-nav></label>
+      <label>Senha <input name="password" type="password" required autocomplete="current-password" data-nav></label>
+      <p class="error" id="login-error" role="alert"></p>
+      <button class="kbtn primary" type="submit" data-nav>Entrar</button>
+      <button class="kbtn ghost" type="button" id="change-server" data-nav>Trocar servidor</button>
+    </form>
+  </main>
+
+  <!-- Quadro -->
+  <div id="board-view" class="board-view hidden">
+    <header class="kbar">
+      <div class="kbar-left">
+        <button class="kbtn icon-only" data-day="-1" data-nav aria-label="Dia anterior">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>
+        <div class="day-box">
+          <span id="day-label" class="day-label">HOJE</span>
+          <span id="day-sub" class="day-sub"></span>
+        </div>
+        <button class="kbtn icon-only" data-day="1" data-nav aria-label="Próximo dia">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+        <div class="seg" role="group" aria-label="Visão">
+          <button data-view="lanes" data-nav aria-pressed="true">Por horário</button>
+          <button data-view="summary" data-nav aria-pressed="false">Resumo de produção</button>
+        </div>
+      </div>
+      <div class="kbar-right">
+        <span class="late-chip hidden" id="late-chip"></span>
+        <span class="rt" id="rt"><i></i><span>Conectando</span></span>
+        <span class="clock" id="clock">--:--</span>
+        <button class="kbtn icon-only" id="sound-btn" data-nav aria-pressed="true" aria-label="Som">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4zM16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"/></svg>
+        </button>
+        <button class="kbtn icon-only ghost" id="menu-btn" data-nav aria-label="Sair">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9M6.3 7a8 8 0 1 0 11.4 0"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="kmain" id="kmain">
+      <section class="lanes" id="lanes" aria-label="Pedidos por horário"></section>
+      <section class="summary hidden" id="summary" aria-label="Resumo de produção"></section>
+    </main>
+
+    <footer class="khint" id="khint">
+      <span>Toque no item: <b>A PRODUZIR</b> → <b class="amber">FAZENDO</b> → <b class="green">PRONTO</b></span>
+      <span>Controle remoto: setas para navegar, OK para confirmar</span>
+    </footer>
+  </div>
+
+  <!-- Confirmação grande (TV) -->
+  <dialog id="kconfirm" class="kconfirm">
+    <form method="dialog">
+      <h2 id="kconfirm-title"></h2>
+      <p id="kconfirm-msg"></p>
+      <div class="row">
+        <button class="kbtn ghost" value="cancel" data-nav>Voltar</button>
+        <button class="kbtn ok" value="ok" id="kconfirm-ok" data-nav>Confirmar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="ktoast" class="ktoast" role="status" aria-live="polite" hidden></div>
+
+  <script src="vendor/supabase.js"></script>
+  <script type="module" src="js/kitchen.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "appId": "br.com.padaria.cozinha",
+  "appName": "Padaria Cozinha",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#0d0d0d"
+  },
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  }
+}
