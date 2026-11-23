@@ -4,8 +4,10 @@
 import {
   api, esc, toast, timeBr, phoneBr, confirmDialog, icon, hydrateIcons, norm, money,
   licenseBadge, licenseText, dateFull,
+  setupSidebar,
 } from './common.js';
 import { createSupabase } from './realtime.js';
+import { mountBrandForm } from './brand-form.js';
 
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
@@ -154,6 +156,7 @@ function renderList() {
         <td><div class="row-actions">
           <button type="button" class="btn sm" data-open="${e.id}">${icon('users', { size: 16 })}Equipe</button>
           <button type="button" class="btn sm ghost" data-license="${e.id}">${icon('key', { size: 16 })}Licença</button>
+          <button type="button" class="btn sm ghost" data-brand="${e.id}">${icon('palette', { size: 16 })}Aparência</button>
           <button type="button" class="btn sm ghost" data-edit="${e.id}">Editar</button>
         </div></td>
       </tr>`).join('') || `<tr><td colspan="8" class="empty">${all.length ? 'Nada encontrado nessa busca.' : 'Nenhum estabelecimento cadastrado ainda. Clique em “Novo estabelecimento”.'}</td></tr>`}
@@ -503,6 +506,19 @@ function go(view) {
   window.scrollTo(0, 0);
 }
 
+// Aparência (logo + cores) de uma loja — o dono do sistema deixa pronta para o cliente
+function openBrandDialog(id) {
+  const est = state.list.find((x) => x.id === id);
+  if (!est) return;
+  $('#brand-store').textContent = est.name;
+  mountBrandForm($('#brand-dialog-body'), {
+    storeName: est.name,
+    load: () => platformApi(`/establishments/${id}/branding`),
+    save: (body) => platformApi(`/establishments/${id}/branding`, { method: 'PUT', body }),
+  });
+  $('#brand-dialog').showModal();
+}
+
 async function copy(text, ok = 'Copiado.') {
   try { await navigator.clipboard.writeText(text); toast(ok, 'ok'); }
   catch { toast('Selecione o texto e copie com Ctrl+C.'); }
@@ -524,6 +540,7 @@ function bindEvents() {
   $('#plan-cancel').addEventListener('click', () => $('#plan-dialog').close());
   $('#plan-form').addEventListener('submit', savePlan);
   $('#license-cancel').addEventListener('click', () => $('#license-dialog').close());
+  $('#brand-close').addEventListener('click', () => $('#brand-dialog').close());
   $('#license-form').addEventListener('submit', saveLicense);
   $('#est-search').addEventListener('input', (e) => { state.search = e.target.value; renderList(); });
 
@@ -539,8 +556,9 @@ function bindEvents() {
 
   document.addEventListener('click', (e) => {
     if (e.target.closest('#edit-plan')) { openPlanDialog(); return; }
-    const t = e.target.closest('[data-go],[data-open],[data-edit],[data-toggle],[data-copy],[data-active-of],[data-reset-of],[data-fill],[data-license]');
+    const t = e.target.closest('[data-go],[data-open],[data-edit],[data-toggle],[data-copy],[data-active-of],[data-reset-of],[data-fill],[data-license],[data-brand]');
     if (!t) return;
+    if (t.dataset.brand) { openBrandDialog(t.dataset.brand); return; }
     if (t.dataset.license) { openLicenseDialog(t.dataset.license); return; }
     if ('fill' in t.dataset) openEstDialog(state.list.find((x) => x.id === t.closest('tr').querySelector('[data-edit]').dataset.edit));
     else if (t.dataset.go) go(t.dataset.go);
@@ -558,6 +576,7 @@ function bindEvents() {
 }
 
 async function init() {
+  setupSidebar();
   hydrateIcons();
   bindEvents();
   try {

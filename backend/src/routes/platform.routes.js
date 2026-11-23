@@ -13,6 +13,7 @@ import {
   TeamPasswordSchema,
   PlanUpdateSchema,
   LicenseAdjustSchema,
+  BrandingSchema,
 } from '../schemas.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -21,7 +22,7 @@ const uuidParam = (v) => {
   return v;
 };
 
-export function platformRoutes({ auth, platform, team, settings, billing }) {
+export function platformRoutes({ auth, platform, team, settings, billing, branding }) {
   const r = Router();
   const owner = auth.requirePlatformAdmin();
 
@@ -52,6 +53,16 @@ export function platformRoutes({ auth, platform, team, settings, billing }) {
   }));
 
   // ----- Plano e licenças (SaaS) -----
+  // Aparência de uma loja (o dono do sistema pode deixar pronta para o cliente)
+  r.get('/establishments/:id/branding', owner, ah(async (req, res) => {
+    const id = uuidParam(req.params.id);
+    res.json({ ...(await branding.get(id)), ready: settings.brandingReady ? settings.brandingReady() : true });
+  }));
+
+  r.put('/establishments/:id/branding', owner, ah(async (req, res) => {
+    res.json(await branding.save(uuidParam(req.params.id), parse(BrandingSchema, req.body)));
+  }));
+
   r.get('/plan', owner, ah(async (_req, res) => {
     res.json({
       plan: await settings.plan(),

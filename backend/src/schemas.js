@@ -211,3 +211,18 @@ export const LicenseAdjustSchema = z.object({
   add_days: z.coerce.number().int().min(1).max(366).optional(),
   trial_ends_at: z.string().datetime({ offset: true }).nullable().optional(),
 }).strict().refine((p) => Object.keys(p).length > 0, 'Nada para alterar.');
+
+// ----- Identidade visual da loja (cores + logo) -----
+const hexColor = z.union([
+  z.string().trim().regex(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, 'Cor inválida. Use o formato #A1B2C3.'),
+  z.literal(''),
+  z.null(),
+]);
+
+export const BrandingSchema = z.object({
+  brand_color: hexColor.optional(),
+  brand_color_2: hexColor.optional(),
+  // imagem em base64 (a tela reduz antes de mandar); conferida no serviço
+  logo: z.string().max(720_000, 'A logo é grande demais (máximo 512 KB).').optional(),
+  remove_logo: z.boolean().optional(),
+}).strict();

@@ -14,7 +14,9 @@ const config = {
 };
 
 const STORE_A = { id: 'aaaaaaaa-0000-0000-0000-000000000001', slug: 'padaria-bela-vista', name: 'Padaria Bela Vista', storeName: 'Padaria Bela Vista', address: 'Rua A, 1', phone: '1133334444', timezone: 'America/Sao_Paulo', minLeadDays: 1, maxLeadDays: 60, active: true };
-const STORE_B = { ...STORE_A, id: 'bbbbbbbb-0000-0000-0000-000000000002', slug: 'doce-sabor', name: 'Doce Sabor', storeName: 'Doce Sabor' };
+// loja com cores e logo próprias
+const STORE_B = { ...STORE_A, id: 'bbbbbbbb-0000-0000-0000-000000000002', slug: 'doce-sabor', name: 'Doce Sabor', storeName: 'Doce Sabor', brandColor: '#5A2D0C', brandColor2: '#FFF4D6', logoUpdatedAt: '2026-11-23T19:00:00Z' };
+const PNG_1PX = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 // loja com licença vencida (bloqueada)
 const STORE_C = { ...STORE_A, id: 'cccccccc-0000-0000-0000-000000000003', slug: 'vencida', name: 'Vencida', storeName: 'Vencida', blocked: true };
 const STORES = [STORE_A, STORE_B, STORE_C];
@@ -100,6 +102,11 @@ before(async () => {
       updatePlan: spy('billing.updatePlan', (patch, o) => ({ patch, o })),
       adjustLicense: spy('billing.adjustLicense', (id, d) => ({ id, d })),
       enabled: true, env: 'sandbox', webhookUrl: 'https://app/api/webhooks/asaas',
+    },
+    branding: {
+      get: spy('branding.get', (id) => ({ id })),
+      save: spy('branding.save', (id, d) => ({ id, ...d })),
+      logo: async (est) => (est.logoUpdatedAt ? { mime: 'image/png', buf: Buffer.from(PNG_1PX, 'base64') } : null),
     },
     platform: {
       list: spy('platform.list', []),
@@ -314,4 +321,65 @@ test('webhook do Asaas exige o token; plano e licenças só para o dono do siste
   assert.equal(r.status, 422);
   r = await get('/api/platform/plan', 'owner');
   assert.equal((await r.json()).plan.price_cents, 9990);
+});
+
+// ---------------------------------------------------------------- aparência
+test('página da loja já sai com nome, cores, logo e ícone da aba da padaria', async () => {
+  let r = await get('/loja/doce-sabor');
+  assert.equal(r.status, 200);
+  let html = await r.text();
+  assert.match(html, /<title>Encomendas — Doce Sabor<\/title>/);
+  assert.match(html, /<strong id="store-name">Doce Sabor<\/strong>/);
+  assert.match(html, /html:root\{--brand:#5A2D0C/);
+  assert.match(html, /<link rel="icon" href="\/api\/public\/logos\/doce-sabor\?v=\d+">/);
+  assert.match(html, /<img class="brand-logo" src="\/api\/public\/logos\/doce-sabor\?v=\d+"/);
+  assert.match(html, /<meta property="og:image" content="http:\/\/127\.0\.0\.1:\d+\/api\/public\/logos\/doce-sabor/);
+  assert.doesNotMatch(html, /brand:head|brand:mark/);
+
+  // loja sem marca: visual padrão
+  html = await (await get('/loja/padaria-bela-vista/acompanhar')).text();
+  assert.match(html, /<title>Acompanhar pedido — Padaria Bela Vista<\/title>/);
+  assert.match(html, /favicon\.svg/);
+  assert.doesNotMatch(html, /brand-vars/);
+
+  // link inexistente: página normal (a tela mostra "loja não encontrada")
+  r = await get('/loja/nao-existe');
+  assert.equal(r.status, 200);
+});
+
+test('logo: imagem pública com cache longo; loja sem logo → 404', async () => {
+  let r = await get('/api/public/logos/doce-sabor?v=1');
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('content-type'), 'image/png');
+  assert.match(r.headers.get('cache-control'), /immutable/);
+  assert.equal(r.headers.get('cross-origin-resource-policy'), 'cross-origin');
+  r = await get('/api/public/logos/padaria-bela-vista');
+  assert.equal(r.status, 404);
+  const j = await (await get('/api/public/stores/doce-sabor')).json();
+  assert.equal(j.brand.primary, '#5A2D0C');
+  assert.equal(j.brand.side_tone, 'light');
+});
+
+test('aparência: só o administrador da loja muda (sempre na própria loja)', async () => {
+  let r = await req('PUT', '/api/staff/branding', { brand_color: '#123456' }, 'desk');
+  assert.equal(r.status, 403);
+  r = await req('PUT', '/api/staff/branding', { brand_color: 'azul' }, 'boss');
+  assert.equal(r.status, 422);
+  r = await req('PUT', '/api/staff/branding', { brand_color: '#123456', extra: 1 }, 'boss');
+  assert.equal(r.status, 422);
+  calls.length = 0;
+  r = await req('PUT', '/api/staff/branding', { brand_color: '#123456', logo: PNG_1PX }, 'bossB');
+  assert.equal(r.status, 200);
+  assert.equal(calls[0].args[0], STORE_B.id);
+  // logo de ~400 KB passa pelo limite de tamanho da rota
+  r = await req('PUT', '/api/staff/branding', { logo: 'A'.repeat(550_000) }, 'boss');
+  assert.equal(r.status, 200);
+  // dono do sistema também pode deixar a aparência pronta
+  r = await req('PUT', `/api/platform/establishments/${STORE_B.id}/branding`, { brand_color_2: '#FFF4D6' }, 'owner');
+  assert.equal(r.status, 200);
+  r = await req('PUT', `/api/platform/establishments/${STORE_B.id}/branding`, { brand_color_2: '#FFF4D6' }, 'boss');
+  assert.equal(r.status, 403);
+  const me = await (await get('/api/staff/me', 'bossB')).json();
+  assert.equal(me.establishment.brand.primary, '#5A2D0C');
+  assert.match(me.establishment.brand.logo_url, /^\/api\/public\/logos\/doce-sabor\?v=/);
 });

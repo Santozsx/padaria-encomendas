@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Atendimento — Padaria</title>
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#13262B">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/atendimento.css">
+</head>
+<body>
+  <!-- ========== LOGIN ========== -->
+  <main id="login-view" class="login hidden">
+    <form id="login-form" class="card login-card">
+      <span class="logo-mark" data-icon="bread"></span>
+      <h1>Atendimento</h1>
+      <p class="muted">Entre com seu usuário da equipe.</p>
+      <label class="field">E-mail<input name="email" type="email" autocomplete="username" required></label>
+      <label class="field">Senha<input name="password" type="password" autocomplete="current-password" required></label>
+      <p class="field-error" id="login-error" role="alert"></p>
+      <button class="btn primary lg block" type="submit">Entrar</button>
+    </form>
+  </main>
+
+  <!-- ========== APP ========== -->
+  <div id="app-view" class="app hidden">
+    <nav class="sidebar" aria-label="Menu principal">
+      <div class="side-brand">
+        <span class="logo-mark" data-icon="bread"></span>
+        <span><strong id="store-name">Padaria</strong><small>Atendimento</small></span>
+      </div>
+      <button type="button" class="nav-item" data-tab="orders" aria-current="page"><span data-icon="board"></span>Pedidos <span class="nav-count" id="open-count"></span></button>
+      <button type="button" class="nav-item admin-only hidden" data-tab="sales"><span data-icon="chart"></span>Vendas e relatórios</button>
+      <button type="button" class="nav-item" data-tab="products"><span data-icon="bread"></span>Produtos</button>
+      <button type="button" class="nav-item admin-only hidden" data-tab="team"><span data-icon="users"></span>Equipe e acessos</button>
+      <button type="button" class="nav-item admin-only hidden" data-tab="fiscal"><span data-icon="receipt"></span>Nota fiscal</button>
+      <button type="button" class="nav-item admin-only hidden" data-tab="billing"><span data-icon="key"></span>Assinatura</button>
+      <a class="nav-item" href="/cozinha/" target="_blank" rel="noopener"><span data-icon="tv"></span>Tela da cozinha</a>
+      <a class="nav-item hidden" id="platform-link" href="/plataforma"><span data-icon="lock"></span>Painel do sistema</a>
+      <div class="side-link">
+        <small>Link para clientes</small>
+        <div class="side-link-row">
+          <input id="store-link" readonly aria-label="Link da loja para clientes">
+          <button type="button" class="btn sm ghost icon-only" id="store-link-copy" title="Copiar link" aria-label="Copiar link"><span data-icon="copy"></span></button>
+          <a class="btn sm ghost icon-only" id="store-link-open" target="_blank" rel="noopener" title="Abrir a loja" aria-label="Abrir a loja"><span data-icon="external"></span></a>
+        </div>
+      </div>
+      <div class="side-foot">
+        <span class="rt" id="rt-status"><i></i><span>Conectando…</span></span>
+        <label class="side-check"><input type="checkbox" id="sound-toggle"> Som para novos pedidos</label>
+        <div class="side-user">
+          <span><strong id="user-name"></strong><small id="user-role"></small></span>
+          <button class="btn sm ghost" id="logout">Sair</button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- ----- PEDIDOS ----- -->
+    <main id="tab-orders" class="panel">
+      <div class="panel-head">
+        <div class="title-line"><h1>Pedidos</h1><span class="muted" id="now-label"></span></div>
+        <div class="head-tools">
+          <label class="search">
+            <span data-icon="search"></span><span class="sr-only">Buscar pedido</span>
+            <input type="search" id="f-q" placeholder="Nº, nome ou telefone">
+          </label>
+          <div class="seg" role="group" aria-label="Visualização">
+            <button type="button" data-view="board" aria-pressed="true"><span data-icon="board"></span>Quadro</button>
+            <button type="button" data-view="list" aria-pressed="false"><span data-icon="list"></span>Lista</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="filters">
+        <div class="chips" id="range-chips">
+          <button type="button" class="chip" data-range="today" aria-pressed="true">Hoje</button>
+          <button type="button" class="chip" data-range="tomorrow" aria-pressed="false">Amanhã</button>
+          <button type="button" class="chip" data-range="week" aria-pressed="false">Próximos 7 dias</button>
+          <button type="button" class="chip" data-range="open" aria-pressed="false">Todos em aberto</button>
+          <button type="button" class="chip" data-range="custom" aria-pressed="false">Escolher período</button>
+        </div>
+        <span id="custom-range" class="custom-range hidden">
+          <input type="date" id="f-from" aria-label="De"> <span class="muted">até</span> <input type="date" id="f-to" aria-label="Até">
+        </span>
+        <span class="divider"></span>
+        <select id="f-fulfillment" aria-label="Modalidade">
+          <option value="">Retirada e entrega</option>
+          <option value="retirada">Só retirada</option>
+          <option value="entrega">Só entrega</option>
+        </select>
+      </div>
+
+      <div class="kpis" id="kpis"></div>
+      <div class="status-chips hidden" id="status-chips"></div>
+      <div id="orders-board" aria-live="polite"></div>
+    </main>
+
+    <!-- ----- VENDAS ----- -->
+    <main id="tab-sales" class="panel hidden">
+      <div class="panel-head">
+        <h1>Vendas e relatórios</h1>
+        <div class="head-tools">
+          <button class="btn" type="button" id="export-csv"><span data-icon="download"></span>Exportar Excel (CSV)</button>
+          <button class="btn" type="button" id="print-report"><span data-icon="printer"></span>Imprimir / PDF</button>
+        </div>
+      </div>
+      <form id="report-form" class="filter-bar card">
+        <div class="seg" id="period-seg" role="group" aria-label="Período">
+          <button type="button" data-period="today">Hoje</button>
+          <button type="button" data-period="7d" aria-pressed="true">7 dias</button>
+          <button type="button" data-period="month">Este mês</button>
+          <button type="button" data-period="lastmonth">Mês passado</button>
+        </div>
+        <span class="date-range"><span data-icon="calendar"></span>
+          <input type="date" name="from" required aria-label="De"> – <input type="date" name="to" required aria-label="Até">
+        </span>
+        <select name="date_field" aria-label="Base de data">
+          <option value="pedido">Pela data do pedido</option>
+          <option value="entrega">Pela data de entrega</option>
+        </select>
+        <select name="status" aria-label="Status">
+          <option value="">Todos os status</option>
+          <option value="recebido">Recebido</option>
+          <option value="em_producao">Em produção</option>
+          <option value="pronto">Pronto</option>
+          <option value="entregue">Entregue</option>
+          <option value="cancelado">Cancelado</option>
+        </select>
+        <select name="fulfillment" aria-label="Modalidade">
+          <option value="">Retirada e entrega</option>
+          <option value="retirada">Retirada</option>
+          <option value="entrega">Entrega</option>
+        </select>
+        <select name="product_id" id="report-product" aria-label="Produto"><option value="">Todos os produtos</option></select>
+      </form>
+      <div id="report" aria-live="polite"></div>
+    </main>
+
+    <!-- ----- PRODUTOS ----- -->
+    <main id="tab-products" class="panel hidden">
+      <div class="panel-head">
+        <div class="title-stack"><h1>Produtos</h1><span class="muted" id="products-count"></span></div>
+        <button class="btn primary" id="new-product"><span data-icon="plus"></span>Novo produto</button>
+      </div>
+      <div class="info-banner"><span data-icon="info"></span>Mudanças de preço valem só para novos pedidos. Os pedidos já feitos guardam o preço do momento da compra.</div>
+      <div class="filters spread">
+        <div class="chips" id="product-cats"></div>
+        <div class="head-tools">
+          <label class="side-check dark"><input type="checkbox" id="show-archived"> Mostrar arquivados</label>
+          <label class="search">
+            <span data-icon="search"></span><span class="sr-only">Buscar produto</span>
+            <input type="search" id="product-q" placeholder="Buscar produto">
+          </label>
+        </div>
+      </div>
+      <div id="products-table"></div>
+    </main>
+
+    <!-- ----- EQUIPE (somente admin) ----- -->
+    <main id="tab-team" class="panel hidden">
+      <div class="panel-head">
+        <div class="title-stack"><h1>Equipe e acessos</h1><span class="muted" id="team-count"></span></div>
+        <button class="btn primary" id="new-member"><span data-icon="plus"></span>Cadastrar acesso</button>
+      </div>
+      <div class="role-cards">
+        <div class="role-card"><span class="role-badge r-admin">Administrador</span><p>Tudo do atendimento, mais <b>vendas e relatórios</b> e o cadastro da equipe.</p></div>
+        <div class="role-card"><span class="role-badge r-atendimento">Atendimento</span><p>Pedidos (quadro, detalhes, status) e cardápio de produtos.</p></div>
+        <div class="role-card"><span class="role-badge r-cozinha">Cozinha</span><p>Só a tela da cozinha: ver o que produzir e marcar como pronto.</p></div>
+      </div>
+      <div id="team-table"></div>
+      <p class="muted small">Somente contas cadastradas aqui conseguem entrar. Clientes não precisam de conta para fazer pedidos.</p>
+    </main>
+
+    <!-- ----- NOTA FISCAL (somente admin) ----- -->
+    <main id="tab-fiscal" class="panel hidden">
+      <div class="panel-head">
+        <div class="title-stack"><h1>Nota fiscal</h1><span class="muted">NFC-e dos pedidos, emitida pela Focus NFe</span></div>
+      </div>
+      <div id="fiscal-status"></div>
+      <form id="fiscal-form" class="fiscal-form" novalidate>
+        <section class="card fcard">
+          <h2>Emissão</h2>
+          <div class="grid-form three">
+            <label class="field check-line"><input type="checkbox" name="fiscal_enabled"><span><b>Emitir NFC-e dos pedidos</b><small>Desligado: nenhuma nota é enviada.</small></span></label>
+            <label class="field">Quando emitir
+              <select name="fiscal_emit_on">
+                <option value="entrega">Ao entregar / retirar o pedido</option>
+                <option value="pedido">Ao confirmar a encomenda</option>
+                <option value="manual">Só manual (botão no pedido)</option>
+              </select></label>
+            <label class="field">Ambiente
+              <select name="fiscal_env">
+                <option value="homologacao">Homologação (teste, sem valor fiscal)</option>
+                <option value="producao">Produção (nota de verdade)</option>
+              </select></label>
+          </div>
+        </section>
+
+        <section class="card fcard">
+          <h2>Empresa emitente</h2>
+          <p class="muted small" id="fiscal-cnpj"></p>
+          <div class="grid-form three">
+            <label class="field span-2">Razão social<input name="razao_social" maxlength="120" placeholder="Como está no CNPJ"></label>
+            <label class="field">Inscrição estadual<input name="inscricao_estadual" maxlength="20" inputmode="numeric"></label>
+            <label class="field">Regime tributário
+              <select name="regime_tributario">
+                <option value="1">Simples Nacional</option>
+                <option value="2">Simples Nacional (excesso de sublimite)</option>
+                <option value="4">Simples Nacional – MEI</option>
+                <option value="3">Regime Normal (Lucro Presumido/Real)</option>
+              </select></label>
+            <label class="field span-2">Rua<input name="addr_street" maxlength="120"></label>
+            <label class="field">Número<input name="addr_number" maxlength="20" placeholder="Ou SN"></label>
+            <label class="field">Bairro<input name="addr_district" maxlength="60"></label>
+            <label class="field">Cidade<input name="addr_city" maxlength="60"></label>
+            <label class="field">UF<input name="addr_uf" maxlength="2" placeholder="SP"></label>
+            <label class="field">CEP<input name="addr_zip" maxlength="9" inputmode="numeric" placeholder="00000-000"></label>
+          </div>
+        </section>
+
+        <section class="card fcard">
+          <h2>Tributação padrão <span class="hint">— preencha com o seu contador</span></h2>
+          <div class="grid-form three">
+            <label class="field">CFOP padrão<input name="fiscal_cfop" maxlength="4" inputmode="numeric"><span class="hint">5101 = produção própria · 5102 = revenda</span></label>
+            <label class="field">CSOSN / CST do ICMS<input name="fiscal_csosn" maxlength="3" inputmode="numeric"><span class="hint">Simples: ex. 102</span></label>
+            <label class="field">NCM padrão <span class="hint">(se o produto não tiver)</span><input name="fiscal_ncm_default" maxlength="8" inputmode="numeric"></label>
+            <label class="field">CST do PIS<input name="fiscal_pis_cst" maxlength="2" inputmode="numeric"></label>
+            <label class="field">CST do COFINS<input name="fiscal_cofins_cst" maxlength="2" inputmode="numeric"></label>
+            <label class="field">Forma de pagamento na nota
+              <select name="fiscal_payment_form">
+                <option value="01">Dinheiro</option><option value="17">Pix</option><option value="03">Cartão de crédito</option>
+                <option value="04">Cartão de débito</option><option value="10">Vale-alimentação</option><option value="11">Vale-refeição</option>
+                <option value="99">Outros</option>
+              </select></label>
+            <label class="field check-line span-3"><input type="checkbox" name="fiscal_ibs_cbs"><span><b>Informar IBS/CBS (Reforma Tributária)</b><small>Obrigatório para o Regime Normal. Usa as alíquotas-teste de 2026 (CBS 0,9% · IBS 0,1%).</small></span></label>
+            <label class="field ibs-only">CST do IBS/CBS<input name="fiscal_ibs_cbs_cst" maxlength="3" inputmode="numeric"></label>
+            <label class="field ibs-only">cClassTrib<input name="fiscal_cclasstrib" maxlength="6" inputmode="numeric"></label>
+          </div>
+        </section>
+
+        <section class="card fcard">
+          <h2>Certificado digital e CSC</h2>
+          <p class="muted small">Enviados direto para a Focus NFe — não ficam guardados neste sistema. Só preencha para cadastrar ou trocar.</p>
+          <div class="grid-form three">
+            <label class="field span-2">Certificado A1 (.pfx ou .p12)<input name="certificate" type="file" accept=".pfx,.p12"><span class="hint" id="cert-info"></span></label>
+            <label class="field">Senha do certificado<input name="certificate_password" type="password" autocomplete="new-password"></label>
+            <label class="field">ID do CSC (produção)<input name="csc_producao_id" maxlength="10" inputmode="numeric" placeholder="Ex.: 000001"></label>
+            <label class="field span-2">CSC (produção)<input name="csc_producao" maxlength="60" autocomplete="off"></label>
+            <label class="field">ID do CSC (homologação)<input name="csc_homologacao_id" maxlength="10" inputmode="numeric"></label>
+            <label class="field span-2">CSC (homologação)<input name="csc_homologacao" maxlength="60" autocomplete="off"></label>
+          </div>
+        </section>
+        <p class="field-error" id="fiscal-error" role="alert"></p>
+        <div class="fiscal-actions"><button class="btn primary lg" type="submit" id="fiscal-save">Salvar</button></div>
+      </form>
+    </main>
+
+    <!-- ----- ASSINATURA (somente admin) ----- -->
+    <main id="tab-billing" class="panel hidden">
+      <div class="panel-head">
+        <div class="title-stack"><h1>Assinatura</h1><span class="muted">Licença de uso do sistema para esta loja</span></div>
+        <button class="btn" id="billing-refresh"><span data-icon="clock"></span>Já paguei — atualizar</button>
+      </div>
+      <div id="billing-body"><div class="skeleton" style="height:240px"></div></div>
+    </main>
+  </div>
+
+  <!-- Licença vencida (equipe que não é administradora) -->
+  <main id="blocked-view" class="login hidden">
+    <section class="card login-card">
+      <span class="logo-mark" data-icon="lock"></span>
+      <h1>Licença vencida</h1>
+      <p class="muted" id="blocked-text">A licença desta loja venceu. Peça ao administrador da loja para renovar a assinatura.</p>
+      <button class="btn primary lg block" id="blocked-logout">Sair</button>
+    </section>
+  </main>
+
+  <!-- Novo acesso -->
+  <dialog id="member-dialog" class="confirm wide">
+    <form id="member-form" method="dialog">
+      <h3>Cadastrar acesso</h3>
+      <p>A pessoa entra com este e-mail e a senha inicial. Você pode trocar o papel ou desativar a conta depois.</p>
+      <div class="grid-form">
+        <label class="field">Nome<input name="full_name" required minlength="2" maxlength="100" autocomplete="off" placeholder="Ex.: Maria Souza"></label>
+        <label class="field">E-mail<input name="email" type="email" required autocomplete="off" placeholder="maria@email.com"></label>
+        <fieldset class="field span-2 role-pick">
+          <legend>Papel</legend>
+          <label class="role-opt"><input type="radio" name="role" value="atendimento" checked><span><b>Atendimento</b><small>Pedidos e produtos</small></span></label>
+          <label class="role-opt"><input type="radio" name="role" value="cozinha"><span><b>Cozinha</b><small>Tela da cozinha</small></span></label>
+          <label class="role-opt"><input type="radio" name="role" value="admin"><span><b>Administrador</b><small>Tudo + vendas + equipe</small></span></label>
+        </fieldset>
+        <label class="field span-2">Senha inicial
+          <span class="pw-row">
+            <input name="password" type="text" required minlength="8" maxlength="72" autocomplete="new-password" spellcheck="false">
+            <button type="button" class="btn" id="gen-password">Gerar senha</button>
+          </span>
+          <span class="hint">Mínimo de 8 caracteres. Passe para a pessoa por um canal seguro.</span>
+        </label>
+      </div>
+      <p class="field-error" id="member-error" role="alert"></p>
+      <div class="actions">
+        <button type="button" class="btn ghost" id="member-cancel">Cancelar</button>
+        <button type="submit" class="btn primary" value="ok">Cadastrar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Credenciais criadas -->
+  <dialog id="creds-dialog" class="confirm wide">
+    <form method="dialog">
+      <h3>Acesso criado</h3>
+      <p>Envie estes dados para a pessoa. Por segurança, a senha não aparece de novo depois que você fechar esta janela.</p>
+      <pre class="creds" id="creds-text"></pre>
+      <div class="actions">
+        <button type="button" class="btn" id="copy-creds"><span data-icon="copy"></span>Copiar</button>
+        <button type="submit" class="btn primary" value="ok">Pronto</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Detalhe do pedido -->
+  <dialog id="order-dialog" class="drawer"><div id="order-detail" class="drawer-in"></div></dialog>
+
+  <!-- Produto (novo/editar) -->
+  <dialog id="product-dialog" class="confirm wide">
+    <form id="product-form" method="dialog">
+      <h3 id="product-dialog-title">Novo produto</h3>
+      <div class="grid-form">
+        <label class="field span-2">Nome<input name="name" required minlength="2" maxlength="120"></label>
+        <label class="field">Categoria
+          <span class="select-add"><select name="category_id" required></select>
+          <button type="button" class="btn sm ghost" id="new-category" title="Criar categoria"><span data-icon="plus"></span>Nova</button></span>
+        </label>
+        <label class="field">Preço (R$)<input name="price" required inputmode="decimal" placeholder="0,00"></label>
+        <label class="field">Vendido por<input name="unit_label" required maxlength="20" value="un" placeholder="un, kg, cento"></label>
+        <label class="field">Ordem no cardápio<input name="sort_order" type="number" value="0"></label>
+        <label class="field">Qtd. mínima<input name="min_quantity" type="number" min="1" value="1" required></label>
+        <label class="field">Qtd. máxima<input name="max_quantity" type="number" min="1" max="1000" value="200" required></label>
+        <label class="field span-2">Descrição<textarea name="description" maxlength="500"></textarea></label>
+        <label class="field span-2">URL da imagem <span class="hint">(opcional)</span><input name="image_url" type="url" placeholder="https://..."></label>
+      </div>
+      <details class="fiscal-fields">
+        <summary>Dados fiscais da nota <span class="hint">(o contador informa)</span></summary>
+        <div class="grid-form three">
+          <label class="field">NCM<input name="ncm" inputmode="numeric" maxlength="10" placeholder="Ex.: 19059090"></label>
+          <label class="field">CFOP <span class="hint">(se diferente)</span><input name="cfop" inputmode="numeric" maxlength="4" placeholder="Padrão da loja"></label>
+          <label class="field">CEST <span class="hint">(se tiver)</span><input name="cest" inputmode="numeric" maxlength="9"></label>
+        </div>
+      </details>
+      <p class="field-error" id="product-error" role="alert"></p>
+      <div class="actions">
+        <button type="button" class="btn ghost" id="product-cancel">Cancelar</button>
+        <button type="submit" class="btn primary" value="ok">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="chart-tip" class="chart-tip" role="tooltip" hidden></div>
+
+  <script src="/vendor/supabase.js"></script>
+  <script type="module" src="/js/atendimento.js"></script>
+</body>
+</html>

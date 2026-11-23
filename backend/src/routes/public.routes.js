@@ -8,8 +8,9 @@ import { parse, CreateOrderSchema, TrackQuerySchema } from '../schemas.js';
 import { deliveryWindow, checkDeliveryDate } from '../lib/dates.js';
 import { SLUG_RE } from '../lib/documents.js';
 import { AppError } from '../lib/errors.js';
+import { brandInfo, palette, normalizeHex } from '../lib/brand.js';
 
-export function publicRoutes({ config, settings, catalog, orders }) {
+export function publicRoutes({ config, settings, catalog, orders, branding }) {
   const r = Router();
 
   // Limita abuso: no máximo 10 pedidos a cada 10 min por IP
@@ -26,6 +27,31 @@ export function publicRoutes({ config, settings, catalog, orders }) {
   r.get('/config', (_req, res) => {
     res.json({ supabaseUrl: config.SUPABASE_URL, supabaseAnonKey: config.SUPABASE_ANON_KEY });
   });
+
+  // Prévia de cores (tela de Aparência): mesma conta de contraste do servidor
+  const paletteLimiter = rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: 'draft-7', legacyHeaders: false });
+  r.get('/brand-palette', paletteLimiter, (req, res) => {
+    const p = normalizeHex(req.query.p);
+    const s2 = normalizeHex(req.query.s);
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.json(palette(p, s2) ?? { vars: null, side_tone: null, theme_color: null });
+  });
+
+  // Logo da loja (imagem). O endereço leva ?v=<versão>, então pode ficar
+  // em cache "para sempre": quando a logo muda, o endereço muda junto.
+  r.get('/logos/:slug', ah(async (req, res) => {
+    const slug = String(req.params.slug || '').toLowerCase();
+    if (!SLUG_RE.test(slug) || !branding) throw new AppError(404, 'SEM_LOGO', 'Logo não encontrada.');
+    const img = await branding.logo(await settings.getBySlug(slug));
+    if (!img) throw new AppError(404, 'SEM_LOGO', 'Logo não encontrada.');
+    res.set({
+      'Content-Type': img.mime,
+      'Cache-Control': req.query.v ? 'public, max-age=31536000, immutable' : 'public, max-age=300',
+      // o app da cozinha (outra origem) também mostra a logo
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+    });
+    res.send(img.buf);
+  }));
 
   // Descobre a loja pelo link e deixa em req.store
   r.use('/stores/:slug', ah(async (req, _res, next) => {
@@ -47,6 +73,7 @@ export function publicRoutes({ config, settings, catalog, orders }) {
       address: s.address,
       phone: s.phone,
       timezone: s.timezone,
+      brand: brandInfo(s), // cores + logo da loja
       ...deliveryWindow(s), // today, minDate, maxDate — no fuso da loja
     });
   });

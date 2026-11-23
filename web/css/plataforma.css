@@ -45,3 +45,8 @@
 .role-pick.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .check-field { flex-direction: row !important; align-items: center; gap: 10px; }
 .check-field input { width: auto; }
+
+/* Aparência de uma loja (diálogo grande) */
+dialog.brand-dialog { width: min(1120px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto; background: var(--bg-staff); }
+.brand-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.brand-dialog-head h3 { font-size: 22px; }

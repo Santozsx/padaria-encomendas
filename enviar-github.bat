@@ -35,7 +35,14 @@ if not errorlevel 1 (
   exit /b 1
 )
 
-git commit -m "Sistema de encomendas para padarias (SaaS multi-loja)" >nul 2>nul
+rem descreva a mudanca: aparece no historico do GitHub e na Render (ajuda a desfazer)
+set "MSG="
+echo.
+set /p "MSG=O que mudou nesta atualizacao? (Enter = Atualizacao do sistema): "
+if not defined MSG set "MSG=Atualizacao do sistema"
+set "MSG=%MSG:"=%"
+git commit -m "%MSG%" >nul 2>nul
+if errorlevel 1 echo  (nada novo para gravar - so conferindo o envio)
 git branch -M main
 git remote remove origin >nul 2>nul
 git remote add origin https://github.com/Santozsx/padaria-encomendas.git

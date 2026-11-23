@@ -1,0 +1,1837 @@
+diff --git a/README.md b/README.md
+index ea8258d..136da64 100644
+--- a/README.md
++++ b/README.md
+@@ -204,7 +204,8 @@ Arquivos SQL:
+ - `supabase/migrations/005_dados_exemplo.sql`: categorias, horários e produtos de exemplo da Padaria Bela Vista.
+ - `supabase/migrations/006_horarios_30min.sql`: horários de retirada/entrega de 30 em 30 minutos (07:00 às 18:00) em todas as lojas. Lojas novas já nascem assim.
+ - `supabase/migrations/007_licencas.sql`: licenças do SaaS (plano, teste grátis, vencimento, tolerância, cortesia, preço especial e histórico das cobranças do Asaas). Lojas que já existiam viram **cortesia**.
+-- `supabase/banco_completo.sql`: 001 + 004 + 005 + 006 + 007 num arquivo só, para instalação nova.
++- `supabase/migrations/008_notas_fiscais.sql`: dados fiscais da loja e dos produtos (NCM/CFOP/CEST), CPF na nota e o registro das NFC-e emitidas (`fiscal_notes`).
++- `supabase/banco_completo.sql`: 001 + 004 + 005 + 006 + 007 + 008 num arquivo só, para instalação nova.
+ 
+ ### Segurança (RLS e permissões)
+ 
+@@ -258,6 +259,7 @@ padaria/
+    - **Instalação nova:** cole e execute `supabase/banco_completo.sql` (tudo de uma vez).
+    - **Já usava o sistema antes das lojas:** execute `supabase/migrations/004_estabelecimentos.sql`. Ele cria a "Padaria Bela Vista" e move para ela todos os pedidos, produtos, horários e funcionários existentes. Pode rodar mais de uma vez sem duplicar nada.
+    - **Horários de 30 em 30 minutos:** execute `supabase/migrations/006_horarios_30min.sql` (depois do 004). Troca as faixas antigas por 07:00, 07:30 … 18:00 em todas as lojas; as antigas ficam desativadas, sem afetar pedidos já feitos.
++   - **Nota fiscal (NFC-e):** execute `supabase/migrations/008_notas_fiscais.sql` (depois do 007). Veja a seção 9.
+    - **Licenças (SaaS):** execute `supabase/migrations/007_licencas.sql` (depois do 006). As lojas que já existem viram **cortesia**; lojas novas ganham o teste grátis. Veja a seção 8.
+ 3. **Authentication → Sign In / Providers → Email**: **desative "Allow new users to sign up"**. Só você cria os usuários da equipe.
+ 4. **Database → Publications → `supabase_realtime`**: confira se `orders`, `order_items` e `products` estão marcadas (a migração já faz isso).
+@@ -273,7 +275,7 @@ Requisitos: **Node.js 20.6+** (recomendado: 22 LTS).
+ cd backend
+ cp .env.example .env        # preencha SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+ npm install
+-npm test                    # 38 testes: datas/fuso, CNPJ/CPF, licenças, validação, isolamento entre lojas, rotas
++npm test                    # 44 testes: datas/fuso, CNPJ/CPF, licenças, NFC-e, validação, isolamento entre lojas, rotas
+ npm run dev                 # http://localhost:3000
+ ```
+ 
+@@ -402,6 +404,9 @@ Erros sempre no formato `{ "error": { "code": "DATA_ANTECEDENCIA", "message": "A
+ | GET | `/api/staff/billing[?refresh=1]` | **admin da loja** | licença, próxima fatura e histórico (funciona com licença vencida) |
+ | POST | `/api/staff/billing/subscribe` · `/cancel` | **admin da loja** | assina `{ email }` / cancela a cobrança recorrente |
+ | POST | `/api/webhooks/asaas` | Asaas (token no cabeçalho) | aviso de cobrança paga/vencida |
++| GET/PUT | `/api/staff/fiscal` | **admin da loja** | configuração da NFC-e (dados da empresa, tributação padrão, certificado A1 e CSC → enviados à Focus) |
++| GET | `/api/staff/orders/:id/fiscal` | atendimento/admin | nota do pedido |
++| POST | `/api/staff/orders/:id/fiscal/emit` · `/cancel` | atendimento/admin | emite / reenvia a nota; cancela `{ justificativa }` (até 30 min) |
+ | POST | `/api/platform/establishments` | **dono do sistema** | `{ name, doc, address, phone, slug?, admin_name, admin_email, admin_password }` |
+ | PATCH | `/api/platform/establishments/:id` | **dono do sistema** | edita dados ou `{ active }` |
+ | GET/POST/PATCH | `/api/platform/establishments/:id/team[/:userId[/password]]` | **dono do sistema** | equipe de qualquer loja |
+@@ -492,7 +497,32 @@ A regra está no servidor **e** no banco (`license_state` + gatilho que recusa p
+ 
+ Outras opções que funcionam igual: Railway, Fly.io ou uma VPS com Node 22 (`cd backend && npm ci && npm run start:cloud`).
+ 
+-## 9. Próximos passos sugeridos
++## 9. Nota fiscal (NFC-e) pela Focus NFe
++
++Cada pedido pode gerar a **NFC-e** (nota fiscal de consumidor, modelo 65), emitida pela API da **Focus NFe**.
++
++- **Quando sai a nota:** por padrão, **ao marcar o pedido como entregue/retirado**. A loja pode trocar para "ao confirmar a encomenda" ou "só manual". Sempre há o botão **Emitir agora / Tentar de novo** no detalhe do pedido.
++- **CPF na nota:** campo opcional no checkout. Sem CPF, a nota sai para consumidor não identificado.
++- **O cliente** vê o link **"Ver nota fiscal"** na página de acompanhamento.
++- **Cancelamento:** se um pedido com nota autorizada for cancelado, o sistema tenta cancelar a nota. A SEFAZ só aceita isso **até 30 minutos** depois da emissão; depois disso a nota fica marcada como "cancelamento negado" para tratar com o contador.
++- **Se der erro** (falta NCM, rejeição da SEFAZ, emissor fora do ar), o pedido mostra o selo **"Nota com erro"** e a mensagem, e dá para reenviar.
++
++### Requisitos da loja
++
++CNPJ (não serve CPF) com **inscrição estadual**, **certificado digital A1** (arquivo .pfx), **CSC** gerado na SEFAZ do estado e o **NCM** de cada produto. Regime, CFOP, CSOSN/CST e PIS/COFINS devem ser definidos pelo **contador** da loja.
++
++### Configurar (dono do sistema)
++
++1. Crie a conta em <https://focusnfe.com.br> (tem teste grátis) e pegue o **token principal** no painel.
++2. No `backend/.env`: `FOCUS_TOKEN=seu-token`. Reinicie o servidor (aparece "Nota fiscal (NFC-e): Focus NFe configurada").
++
++### Configurar (admin de cada loja)
++
++Atendimento → **Nota fiscal**: preencha razão social, inscrição estadual, regime e endereço completo; a tributação padrão (com o contador); envie o **certificado A1 + senha** e o **CSC**; ligue "Emitir NFC-e" e **comece em Homologação** (teste, sem valor fiscal). Em **Produtos**, informe o NCM de cada item. Quando as notas de teste estiverem saindo certinhas, troque o ambiente para **Produção**.
++
++O certificado e o CSC vão direto para a Focus e **não ficam guardados** neste sistema; os tokens de emissão de cada loja ficam só no banco (tabela `fiscal_secrets`, sem acesso pelo navegador).
++
++## 10. Próximos passos sugeridos
+ 
+ - Pagamento antecipado via Pix (webhook do provedor → nova coluna `payment_status`).
+ - Notificação ao cliente no WhatsApp quando o pedido ficar pronto.
+diff --git a/backend/.env.example b/backend/.env.example
+index 61ff29e..f491f94 100644
+--- a/backend/.env.example
++++ b/backend/.env.example
+@@ -31,3 +31,10 @@ ASAAS_API_KEY=
+ ASAAS_ENV=sandbox
+ # Token que você inventa e cadastra no webhook do Asaas (Integrações > Webhooks)
+ ASAAS_WEBHOOK_TOKEN=
++
++# ---------------------------------------------------------------------
++# Nota fiscal (NFC-e) pela Focus NFe
++# ---------------------------------------------------------------------
++# Token PRINCIPAL da sua conta na Focus NFe (painel > Tokens). É com ele que
++# o sistema cadastra cada loja como empresa emitente (com certificado e CSC).
++FOCUS_TOKEN=
+diff --git a/backend/src/app.js b/backend/src/app.js
+index cf62c6b..9bb0067 100644
+--- a/backend/src/app.js
++++ b/backend/src/app.js
+@@ -53,6 +53,8 @@ export function createApp(deps) {
+       maxAge: 600,
+     }),
+   );
++  // o certificado digital (.pfx em base64) é maior que um pedido comum
++  app.use('/api/staff/fiscal', express.json({ limit: '1mb' }));
+   app.use(express.json({ limit: '100kb' }));
+ 
+   app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+diff --git a/backend/src/config.js b/backend/src/config.js
+index ba3c457..5d77b92 100644
+--- a/backend/src/config.js
++++ b/backend/src/config.js
+@@ -16,6 +16,8 @@ const EnvSchema = z.object({
+   ASAAS_API_KEY: z.string().optional().default(''),
+   ASAAS_ENV: z.enum(['sandbox', 'production']).default('sandbox'),
+   ASAAS_WEBHOOK_TOKEN: z.string().optional().default(''),
++  // Nota fiscal: token principal da SUA conta Focus NFe (cadastra as lojas como emitentes)
++  FOCUS_TOKEN: z.string().optional().default(''),
+ });
+ 
+ export function loadConfig(env = process.env) {
+diff --git a/backend/src/routes/public.routes.js b/backend/src/routes/public.routes.js
+index 638168e..3b1b5f8 100644
+--- a/backend/src/routes/public.routes.js
++++ b/backend/src/routes/public.routes.js
+@@ -9,7 +9,7 @@ import { deliveryWindow, checkDeliveryDate } from '../lib/dates.js';
+ import { SLUG_RE } from '../lib/documents.js';
+ import { AppError } from '../lib/errors.js';
+ 
+-export function publicRoutes({ config, settings, catalog, orders }) {
++export function publicRoutes({ config, settings, catalog, orders, fiscal }) {
+   const r = Router();
+ 
+   // Limita abuso: no máximo 10 pedidos a cada 10 min por IP
+@@ -66,14 +66,19 @@ export function publicRoutes({ config, settings, catalog, orders }) {
+ 
+   r.post('/stores/:slug/orders', orderLimiter, ah(async (req, res) => {
+     const payload = parse(CreateOrderSchema, req.body);
+-    res.status(201).json(await orders.create(req.store, payload));
++    const order = await orders.create(req.store, payload);
++    fiscal?.onOrderCreated(req.store.id, order).catch((e) => console.error('[nota]', e.message));
++    res.status(201).json(order);
+   }));
+ 
+   r.get('/stores/:slug/orders/:code', readLimiter, ah(async (req, res) => {
+     const code = Number(req.params.code);
+     if (!Number.isInteger(code) || code <= 0) throw new AppError(422, 'VALIDACAO', 'Número do pedido inválido.');
+     const { phone } = parse(TrackQuerySchema, req.query);
+-    res.json(await orders.track(req.store.id, code, phone));
++    const data = await orders.track(req.store.id, code, phone);
++    data.nota_fiscal = fiscal ? await fiscal.publicNote(req.store.id, data.id) : null;
++    delete data.id;
++    res.json(data);
+   }));
+ 
+   return r;
+diff --git a/backend/src/routes/staff.routes.js b/backend/src/routes/staff.routes.js
+index fda9366..a664668 100644
+--- a/backend/src/routes/staff.routes.js
++++ b/backend/src/routes/staff.routes.js
+@@ -17,6 +17,8 @@ import {
+   TeamPasswordSchema,
+   CategoryCreateSchema,
+   SubscribeSchema,
++  FiscalConfigSchema,
++  FiscalCancelSchema,
+ } from '../schemas.js';
+ 
+ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+@@ -31,7 +33,7 @@ function intParam(value) {
+   return n;
+ }
+ 
+-export function staffRoutes({ auth, settings, catalog, orders, reports, team, billing }) {
++export function staffRoutes({ auth, settings, catalog, orders, reports, team, billing, fiscal }) {
+   const r = Router();
+   // Toda consulta usa SEMPRE a loja de quem está logado (nunca um id vindo do navegador)
+   const est = (req) => req.staff.establishment_id;
+@@ -83,7 +85,13 @@ export function staffRoutes({ auth, settings, catalog, orders, reports, team, bi
+ 
+   // ----- Pedidos -----
+   r.get('/orders', anyStaff, ah(async (req, res) => {
+-    res.json(await orders.list(est(req), parse(OrdersQuerySchema, req.query)));
++    const list = await orders.list(est(req), parse(OrdersQuerySchema, req.query));
++    if (fiscal) {
++      // situação da nota fiscal de cada pedido (para o selo no cartão)
++      const notes = await fiscal.statusByOrders(est(req), list.map((o) => o.id)).catch(() => ({}));
++      list.forEach((o) => { o.fiscal = notes[o.id] ?? null; });
++    }
++    res.json(list);
+   }));
+ 
+   r.get('/orders/:id', anyStaff, ah(async (req, res) => {
+@@ -96,7 +104,33 @@ export function staffRoutes({ auth, settings, catalog, orders, reports, team, bi
+ 
+   r.patch('/orders/:id/status', anyStaff, ah(async (req, res) => {
+     const body = parse(OrderStatusSchema, req.body);
+-    res.json(await orders.setStatus(req.staff, uuidParam(req.params.id), body));
++    const order = await orders.setStatus(req.staff, uuidParam(req.params.id), body);
++    // entregue -> emite a NFC-e (se a loja usa "ao entregar"); cancelado -> tenta cancelar a nota
++    fiscal?.onOrderStatus(est(req), order).catch((e) => console.error('[nota]', e.message));
++    res.json(order);
++  }));
++
++  // ----- Nota fiscal do pedido -----
++  r.get('/orders/:id/fiscal', desk, ah(async (req, res) => {
++    res.json(await fiscal.orderFiscal(est(req), uuidParam(req.params.id)));
++  }));
++
++  r.post('/orders/:id/fiscal/emit', desk, ah(async (req, res) => {
++    res.json({ note: await fiscal.emitForOrder(est(req), uuidParam(req.params.id), { force: true }) });
++  }));
++
++  r.post('/orders/:id/fiscal/cancel', desk, ah(async (req, res) => {
++    const { justificativa } = parse(FiscalCancelSchema, req.body);
++    res.json({ note: await fiscal.cancelForOrder(est(req), uuidParam(req.params.id), justificativa) });
++  }));
++
++  // ----- Configuração fiscal da loja (somente administradores) -----
++  r.get('/fiscal', adminOnly, ah(async (req, res) => {
++    res.json(await fiscal.getConfig(est(req)));
++  }));
++
++  r.put('/fiscal', adminOnly, ah(async (req, res) => {
++    res.json(await fiscal.saveConfig(est(req), parse(FiscalConfigSchema, req.body)));
+   }));
+ 
+   r.patch('/order-items/:id/status', anyStaff, ah(async (req, res) => {
+diff --git a/backend/src/schemas.js b/backend/src/schemas.js
+index 0c6df3c..3594174 100644
+--- a/backend/src/schemas.js
++++ b/backend/src/schemas.js
+@@ -2,7 +2,7 @@
+ // O banco valida de novo — são duas camadas independentes.
+ import { z } from 'zod';
+ import { isValidIsoDate } from './lib/dates.js';
+-import { parseDocument, SLUG_RE } from './lib/documents.js';
++import { parseDocument, SLUG_RE, isValidCpf } from './lib/documents.js';
+ 
+ export const ORDER_STATUSES = ['recebido', 'em_producao', 'pronto', 'entregue', 'cancelado'];
+ export const ITEM_STATUSES = ['pendente', 'em_producao', 'produzido'];
+@@ -26,6 +26,11 @@ export const CreateOrderSchema = z
+     delivery_date: isoDate,
+     time_slot_id: z.coerce.number().int().positive(),
+     notes: cleanText(500).optional().default(''),
++    // "CPF na nota" (opcional)
++    customer_cpf: z.string().optional()
++      .transform((v) => (v ? v.replace(/\D/g, '') : undefined))
++      .refine((v) => v === undefined || v === '' || isValidCpf(v), 'CPF inválido. Confira os números ou deixe em branco.')
++      .transform((v) => v || undefined),
+     expected_total_cents: z.coerce.number().int().nonnegative().optional(),
+     items: z
+       .array(
+@@ -93,6 +98,13 @@ export const ReportQuerySchema = z
+ 
+ export const TrackQuerySchema = z.object({ phone });
+ 
++function fiscalCode(re, msg) {
++  return z.union([z.string().trim().transform((v) => v.replace(/[.\s-]/g, '')), z.null()])
++    .refine((v) => v === null || v === '' || re.test(v), msg)
++    .transform((v) => v || null)
++    .optional();
++}
++
+ const productBase = {
+   category_id: z.coerce.number().int().positive(),
+   name: cleanText(120).min(2),
+@@ -106,6 +118,10 @@ const productBase = {
+   min_quantity: z.coerce.number().int().min(1).default(1),
+   max_quantity: z.coerce.number().int().min(1).max(1000).default(200),
+   sort_order: z.coerce.number().int().default(0),
++  // dados fiscais (o contador informa); vazio = usa o padrão da loja
++  ncm: fiscalCode(/^\d{8}$/, 'NCM deve ter 8 números.'),
++  cfop: fiscalCode(/^\d{4}$/, 'CFOP deve ter 4 números.'),
++  cest: fiscalCode(/^\d{7}$/, 'CEST deve ter 7 números.'),
+ };
+ 
+ export const ProductCreateSchema = z.object(productBase).refine(
+@@ -211,3 +227,56 @@ export const LicenseAdjustSchema = z.object({
+   add_days: z.coerce.number().int().min(1).max(366).optional(),
+   trial_ends_at: z.string().datetime({ offset: true }).nullable().optional(),
+ }).strict().refine((p) => Object.keys(p).length > 0, 'Nada para alterar.');
++
++// ----- Nota fiscal (NFC-e) da loja -----
++const digitsOnly = (min, max, msg) => z.string().trim().transform((v) => v.replace(/\D/g, ''))
++  .refine((v) => v.length >= min && v.length <= max, msg);
++const twoDigits = (msg) => z.string().trim().regex(/^\d{2,3}$/, msg);
++
++export const FiscalConfigSchema = z.object({
++  fiscal_enabled: z.boolean().optional(),
++  fiscal_env: z.enum(['homologacao', 'producao']).optional(),
++  fiscal_emit_on: z.enum(['entrega', 'pedido', 'manual']).optional(),
++  inscricao_estadual: z.string().trim().max(20).transform((v) => v.replace(/[.\-/\s]/g, '').toUpperCase())
++    .refine((v) => /^(\d{2,14}|ISENTO)$/.test(v), 'Inscrição estadual inválida.').optional(),
++  regime_tributario: z.coerce.number().int().min(1).max(4).optional(),
++  razao_social: cleanText(120).optional(),
++  addr_street: cleanText(120).min(2, 'Informe a rua.').optional(),
++  addr_number: cleanText(20).min(1, 'Informe o número (ou SN).').optional(),
++  addr_district: cleanText(60).min(2, 'Informe o bairro.').optional(),
++  addr_city: cleanText(60).min(2, 'Informe a cidade.').optional(),
++  addr_uf: z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/, 'UF inválida.').optional(),
++  addr_zip: digitsOnly(8, 8, 'CEP deve ter 8 números.').optional(),
++  fiscal_cfop: z.string().trim().regex(/^\d{4}$/, 'CFOP deve ter 4 números.').optional(),
++  fiscal_csosn: twoDigits('CSOSN/CST inválido.').optional(),
++  fiscal_pis_cst: twoDigits('CST do PIS inválido.').optional(),
++  fiscal_cofins_cst: twoDigits('CST do COFINS inválido.').optional(),
++  fiscal_ncm_default: z.union([z.string().trim().regex(/^\d{8}$/, 'NCM padrão deve ter 8 números.'), z.literal(''), z.null()])
++    .transform((v) => v || null).optional(),
++  fiscal_payment_form: z.enum(['01', '03', '04', '05', '10', '11', '15', '17', '20', '99']).optional(),
++  fiscal_ibs_cbs: z.boolean().optional(),
++  fiscal_ibs_cbs_cst: z.union([z.string().trim().regex(/^\d{3}$/, 'CST do IBS/CBS deve ter 3 números.'), z.literal(''), z.null()])
++    .transform((v) => v || null).optional(),
++  fiscal_cclasstrib: z.union([z.string().trim().regex(/^\d{6}$/, 'cClassTrib deve ter 6 números.'), z.literal(''), z.null()])
++    .transform((v) => v || null).optional(),
++  // vão direto para a Focus NFe (não ficam guardados aqui)
++  csc: z.object({
++    producao_id: z.string().trim().max(10).optional(),
++    producao: z.string().trim().max(60).optional(),
++    homologacao_id: z.string().trim().max(10).optional(),
++    homologacao: z.string().trim().max(60).optional(),
++  }).optional(),
++  certificate_base64: z.string().max(800_000).regex(/^[A-Za-z0-9+/=\s]+$/, 'Arquivo do certificado inválido.').optional(),
++  certificate_password: z.string().max(100).optional(),
++}).strict().superRefine((c, ctx) => {
++  if (c.certificate_base64 && !c.certificate_password) {
++    ctx.addIssue({ code: 'custom', path: ['certificate_password'], message: 'Informe a senha do certificado.' });
++  }
++  if (c.fiscal_ibs_cbs && (!c.fiscal_ibs_cbs_cst || !c.fiscal_cclasstrib)) {
++    ctx.addIssue({ code: 'custom', path: ['fiscal_ibs_cbs_cst'], message: 'Para informar IBS/CBS, preencha o CST e o cClassTrib (peça ao contador).' });
++  }
++});
++
++export const FiscalCancelSchema = z.object({
++  justificativa: cleanText(255).min(15, 'Explique o motivo com pelo menos 15 caracteres.'),
++});
+diff --git a/backend/src/server.js b/backend/src/server.js
+index 0c9f4cf..528bee6 100644
+--- a/backend/src/server.js
++++ b/backend/src/server.js
+@@ -9,6 +9,8 @@ import { createTeamService } from './services/team.service.js';
+ import { createPlatformService } from './services/platform.service.js';
+ import { createBillingService } from './services/billing.service.js';
+ import { createAsaas } from './lib/asaas.js';
++import { createFiscalService } from './services/fiscal.service.js';
++import { createFocus } from './lib/focus.js';
+ import { createAuth } from './middleware/auth.js';
+ import { createApp } from './app.js';
+ 
+@@ -38,9 +40,13 @@ const deps = {
+     webhookToken: config.ASAAS_WEBHOOK_TOKEN,
+     publicUrl: config.PUBLIC_URL,
+   }),
++  fiscal: createFiscalService(db, { focus: createFocus({ masterToken: config.FOCUS_TOKEN }) }),
+   auth: createAuth(db),
+ };
+ 
++// Notas que ficaram "processando" na SEFAZ: consulta a cada 2 minutos
++setInterval(() => deps.fiscal.sweep().catch((e) => console.error('[nota]', e.message)), 2 * 60_000).unref();
++
+ // Sincroniza as assinaturas com o Asaas de hora em hora (funciona mesmo sem webhook)
+ if (deps.billing.enabled) {
+   const run = () => deps.billing.sweep().catch((e) => console.error('[licenças]', e.message));
+@@ -58,6 +64,9 @@ const server = app.listen(config.PORT, () => {
+   console.log(deps.billing.enabled
+     ? `  Cobrança das licenças: Asaas (${config.ASAAS_ENV === 'production' ? 'PRODUÇÃO' : 'sandbox de testes'})`
+     : '  Cobrança das licenças: desligada (sem ASAAS_API_KEY no .env)');
++  console.log(config.FOCUS_TOKEN
++    ? '  Nota fiscal (NFC-e): Focus NFe configurada'
++    : '  Nota fiscal (NFC-e): sem FOCUS_TOKEN no .env (lojas não conseguem cadastrar o emissor)');
+ });
+ 
+ // Encerramento limpo (Ctrl+C, deploy)
+diff --git a/backend/src/services/orders.service.js b/backend/src/services/orders.service.js
+index 08464f9..eb0c3a7 100644
+--- a/backend/src/services/orders.service.js
++++ b/backend/src/services/orders.service.js
+@@ -16,12 +16,19 @@ export function createOrdersService(db) {
+     const dateError = checkDeliveryDate(payload.delivery_date, est);
+     if (dateError) throw new AppError(422, dateError.code, dateError.message);
+ 
++    const { customer_cpf: cpf, ...rest } = payload;
+     const body = {
+-      ...payload,
++      ...rest,
+       establishment_id: est.id, // definido pelo servidor, nunca pelo navegador
+       delivery_address: payload.fulfillment === 'entrega' ? payload.delivery_address : null,
+     };
+-    return unwrap(await db.rpc('create_order', { p: body }));
++    const order = unwrap(await db.rpc('create_order', { p: body }));
++    if (cpf) {
++      // "CPF na nota": guardado à parte (a função create_order não conhece o campo)
++      const { error } = await db.from('orders').update({ customer_cpf: cpf }).eq('id', order.id);
++      if (!error) order.customer_cpf = cpf;
++    }
++    return order;
+   }
+ 
+   async function list(estId, { from, to, status, fulfillment, q, limit }) {
+@@ -119,7 +126,7 @@ export function createOrdersService(db) {
+   async function track(estId, code, phone) {
+     const { data, error } = await db
+       .from('orders')
+-      .select('code, status, delivery_date, time_slot_label, fulfillment, total_cents, created_at, customer_phone, items:order_items(product_name, quantity, unit_label, status)')
++      .select('id, code, status, delivery_date, time_slot_label, fulfillment, total_cents, created_at, customer_phone, items:order_items(product_name, quantity, unit_label, status)')
+       .eq('establishment_id', estId)
+       .eq('code', code)
+       .maybeSingle();
+diff --git a/backend/test/api.test.js b/backend/test/api.test.js
+index 04d9059..c0ddb7a 100644
+--- a/backend/test/api.test.js
++++ b/backend/test/api.test.js
+@@ -89,6 +89,18 @@ before(async () => {
+       list: spy('team.list', [{ user_id: 'u3', email: 'gabriel@padaria.com', role: 'admin', active: true }]),
+       create: spy('team.create', (est, d) => ({ ...d, user_id: 'novo' })),
+     },
++    fiscal: {
++      getConfig: spy('fiscal.getConfig', (estId) => ({ estId })),
++      saveConfig: spy('fiscal.saveConfig', (estId, cfg) => ({ estId, cfg })),
++      emitForOrder: spy('fiscal.emitForOrder', (estId, id) => ({ status: 'autorizada', estId, id })),
++      cancelForOrder: spy('fiscal.cancelForOrder', (estId, id, j) => ({ status: 'cancelada', j })),
++      noteFor: spy('fiscal.noteFor', () => null),
++      orderFiscal: async () => ({ enabled: false, note: null }),
++      statusByOrders: async () => ({}),
++      onOrderStatus: async () => {},
++      onOrderCreated: async () => {},
++      publicNote: async () => null,
++    },
+     billing: {
+       summary: spy('billing.summary', (estId) => ({ estId })),
+       subscribe: spy('billing.subscribe', (estId, d) => ({ estId, ...d })),
+@@ -315,3 +327,32 @@ test('webhook do Asaas exige o token; plano e licenças só para o dono do siste
+   r = await get('/api/platform/plan', 'owner');
+   assert.equal((await r.json()).plan.price_cents, 9990);
+ });
++
++test('nota fiscal: configuração só admin; emitir/cancelar pelo atendimento da própria loja', async () => {
++  let r = await get('/api/staff/fiscal', 'desk');
++  assert.equal(r.status, 403);
++  r = await req('PUT', '/api/staff/fiscal', { addr_uf: 'SPX' }, 'boss');
++  assert.equal(r.status, 422);
++  calls.length = 0;
++  r = await req('PUT', '/api/staff/fiscal', { fiscal_enabled: true, addr_zip: '06500-000', inscricao_estadual: '123.456.789.110', certificate_base64: 'QUJD' }, 'boss');
++  assert.equal(r.status, 422); // falta a senha do certificado
++  r = await req('PUT', '/api/staff/fiscal', { fiscal_enabled: true, addr_zip: '06500-000', inscricao_estadual: '123.456.789.110' }, 'boss');
++  assert.equal(r.status, 200);
++  assert.deepEqual(calls.at(-1).args, [STORE_A.id, { fiscal_enabled: true, addr_zip: '06500000', inscricao_estadual: '123456789110' }]);
++
++  const id = '11111111-2222-3333-4444-555555555555';
++  r = await req('POST', `/api/staff/orders/${id}/fiscal/emit`, {}, 'tv');
++  assert.equal(r.status, 403); // cozinha não emite nota
++  r = await req('POST', `/api/staff/orders/${id}/fiscal/emit`, {}, 'desk');
++  assert.equal(r.status, 200);
++  assert.equal(calls.at(-1).args[0], STORE_A.id);
++  r = await req('POST', `/api/staff/orders/${id}/fiscal/cancel`, { justificativa: 'curta' }, 'desk');
++  assert.equal(r.status, 422);
++});
++
++test('pedido aceita CPF na nota válido e recusa inválido', async () => {
++  const base = { customer_name: 'Maria', customer_phone: '11999998888', fulfillment: 'retirada', delivery_date: '2099-01-10', time_slot_id: 1, items: [{ product_id: 1, quantity: 1 }] };
++  let r = await req('POST', '/api/public/stores/padaria-bela-vista/orders', { ...base, customer_cpf: '111.111.111-11' });
++  assert.equal(r.status, 422);
++  assert.match((await r.json()).error.message, /CPF/);
++});
+diff --git a/supabase/banco_completo.sql b/supabase/banco_completo.sql
+index 217fad4..26ef9eb 100644
+--- a/supabase/banco_completo.sql
++++ b/supabase/banco_completo.sql
+@@ -1,9 +1,9 @@
+ -- =====================================================================
+---  ARQUIVO UNICO PARA INSTALACAO NOVA (schema + lojas + exemplos + horarios + licencas)
++--  ARQUIVO UNICO PARA INSTALACAO NOVA (schema + lojas + exemplos + horarios + licencas + notas)
+ --  Supabase > SQL Editor > New query > cole TUDO > Run
+ --  Pode rodar mais de uma vez sem duplicar nada.
+ --  Quem JA tem o banco instalado: rode so as migracoes que faltam
+---  (004_estabelecimentos.sql, 006_horarios_30min.sql, 007_licencas.sql)
++--  (004, 006, 007, 008 - nessa ordem)
+ -- =====================================================================
+ 
+ -- =====================================================================
+@@ -1527,3 +1527,147 @@ grant  execute on function public.register_license_payment(uuid, text, integer,
+ 
+ -- Conferência
+ select name as loja, license_mode as modo, public.license_state(id) as situacao from public.establishments order by created_at;
++
++-- =====================================================================
++--  Migração 008: NOTA FISCAL (NFC-e) de cada pedido, emitida pela Focus NFe
++--
++--  Rode no SQL Editor do Supabase depois do 007. Pode rodar de novo.
++--
++--  * Cada loja configura os dados fiscais (Atendimento > Nota fiscal):
++--    inscrição estadual, regime, endereço completo, CSC e certificado A1.
++--  * Cada produto pode ter NCM, CFOP e CEST (o contador informa).
++--  * O cliente pode informar "CPF na nota".
++--  * A nota é emitida automaticamente quando o pedido é marcado como
++--    ENTREGUE/RETIRADO (a loja pode trocar para "ao confirmar a encomenda"
++--    ou "só manual") e fica registrada em fiscal_notes.
++-- =====================================================================
++
++-- ---------------------------------------------------------------------
++-- 1. Dados fiscais da loja
++-- ---------------------------------------------------------------------
++alter table public.establishments
++  add column if not exists fiscal_enabled        boolean not null default false,
++  add column if not exists fiscal_env            text    not null default 'homologacao',
++  add column if not exists fiscal_emit_on        text    not null default 'entrega',
++  add column if not exists inscricao_estadual    text,
++  add column if not exists regime_tributario     smallint not null default 1,  -- 1 Simples, 2 Simples excesso, 3 Normal, 4 MEI
++  add column if not exists razao_social          text,
++  add column if not exists addr_street           text,
++  add column if not exists addr_number           text,
++  add column if not exists addr_district         text,
++  add column if not exists addr_city             text,
++  add column if not exists addr_uf               text,
++  add column if not exists addr_zip              text,
++  add column if not exists fiscal_cfop           text not null default '5101',  -- produção própria
++  add column if not exists fiscal_csosn          text not null default '102',   -- Simples sem crédito
++  add column if not exists fiscal_pis_cst        text not null default '49',
++  add column if not exists fiscal_cofins_cst     text not null default '49',
++  add column if not exists fiscal_ncm_default    text,
++  add column if not exists fiscal_payment_form   text not null default '01',    -- 01 dinheiro
++  add column if not exists fiscal_ibs_cbs        boolean not null default false,
++  add column if not exists fiscal_ibs_cbs_cst    text,
++  add column if not exists fiscal_cclasstrib     text,
++  add column if not exists focus_company_id      text,
++  add column if not exists fiscal_cert_valid_until timestamptz;
++
++do $$ begin
++  if not exists (select 1 from pg_constraint where conname = 'establishments_fiscal_env_chk') then
++    alter table public.establishments add constraint establishments_fiscal_env_chk
++      check (fiscal_env in ('homologacao','producao'));
++  end if;
++  if not exists (select 1 from pg_constraint where conname = 'establishments_fiscal_emit_on_chk') then
++    alter table public.establishments add constraint establishments_fiscal_emit_on_chk
++      check (fiscal_emit_on in ('pedido','entrega','manual'));
++  end if;
++  if not exists (select 1 from pg_constraint where conname = 'establishments_regime_chk') then
++    alter table public.establishments add constraint establishments_regime_chk
++      check (regime_tributario between 1 and 4);
++  end if;
++end $$;
++
++-- Tokens da Focus NFe de cada loja: só o back-end lê
++create table if not exists public.fiscal_secrets (
++  establishment_id        uuid primary key references public.establishments(id) on delete cascade,
++  focus_token_producao    text,
++  focus_token_homologacao text,
++  updated_at              timestamptz not null default now()
++);
++alter table public.fiscal_secrets enable row level security;   -- sem políticas
++revoke all on public.fiscal_secrets from anon, authenticated;
++grant all on public.fiscal_secrets to service_role;
++
++-- ---------------------------------------------------------------------
++-- 2. Dados fiscais dos produtos e CPF na nota
++-- ---------------------------------------------------------------------
++alter table public.products
++  add column if not exists ncm  text,
++  add column if not exists cfop text,
++  add column if not exists cest text;
++
++do $$ begin
++  if not exists (select 1 from pg_constraint where conname = 'products_ncm_chk') then
++    alter table public.products add constraint products_ncm_chk check (ncm is null or ncm ~ '^\d{8}$');
++  end if;
++  if not exists (select 1 from pg_constraint where conname = 'products_cfop_chk') then
++    alter table public.products add constraint products_cfop_chk check (cfop is null or cfop ~ '^\d{4}$');
++  end if;
++  if not exists (select 1 from pg_constraint where conname = 'products_cest_chk') then
++    alter table public.products add constraint products_cest_chk check (cest is null or cest ~ '^\d{7}$');
++  end if;
++end $$;
++
++alter table public.orders add column if not exists customer_cpf text;
++do $$ begin
++  if not exists (select 1 from pg_constraint where conname = 'orders_customer_cpf_chk') then
++    alter table public.orders add constraint orders_customer_cpf_chk check (customer_cpf is null or customer_cpf ~ '^\d{11}$');
++  end if;
++end $$;
++
++-- ---------------------------------------------------------------------
++-- 3. Notas emitidas (uma por pedido)
++--    status: pendente | processando | autorizada | erro | cancelada | cancelamento_negado
++-- ---------------------------------------------------------------------
++create table if not exists public.fiscal_notes (
++  id               bigint generated always as identity primary key,
++  establishment_id uuid not null references public.establishments(id) on delete cascade,
++  order_id         uuid not null unique references public.orders(id) on delete cascade,
++  ref              text not null unique,             -- referência enviada à Focus
++  env              text not null,                    -- homologacao | producao
++  status           text not null default 'pendente',
++  numero           text,
++  serie            text,
++  chave            text,
++  danfe_url        text,
++  xml_url          text,
++  qrcode_url       text,
++  consulta_url     text,
++  sefaz_status     text,
++  message          text,
++  attempts         integer not null default 0,
++  authorized_at    timestamptz,
++  cancelled_at     timestamptz,
++  created_at       timestamptz not null default now(),
++  updated_at       timestamptz not null default now(),
++  constraint fiscal_notes_status_chk check (status in ('pendente','processando','autorizada','erro','cancelada','cancelamento_negado'))
++);
++create index if not exists fiscal_notes_est_idx on public.fiscal_notes (establishment_id, created_at desc);
++
++alter table public.fiscal_notes enable row level security;
++drop policy if exists fiscal_notes_staff_read on public.fiscal_notes;
++create policy fiscal_notes_staff_read on public.fiscal_notes for select to authenticated
++  using (establishment_id = public.staff_establishment());
++grant select on public.fiscal_notes to authenticated;
++grant all on public.fiscal_notes to service_role;
++
++-- O atendimento recebe a mudança da nota em tempo real
++do $$ begin
++  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'fiscal_notes') then
++    if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
++      alter publication supabase_realtime add table public.fiscal_notes;
++    end if;
++  end if;
++end $$;
++
++-- Conferência
++select name as loja, fiscal_enabled as nota_ligada, fiscal_env as ambiente from public.establishments order by created_at;
++
+diff --git a/web/atendimento.html b/web/atendimento.html
+index 6afee55..529ac00 100644
+--- a/web/atendimento.html
++++ b/web/atendimento.html
+@@ -38,6 +38,7 @@
+       <button type="button" class="nav-item admin-only hidden" data-tab="sales"><span data-icon="chart"></span>Vendas e relatórios</button>
+       <button type="button" class="nav-item" data-tab="products"><span data-icon="bread"></span>Produtos</button>
+       <button type="button" class="nav-item admin-only hidden" data-tab="team"><span data-icon="users"></span>Equipe e acessos</button>
++      <button type="button" class="nav-item admin-only hidden" data-tab="fiscal"><span data-icon="receipt"></span>Nota fiscal</button>
+       <button type="button" class="nav-item admin-only hidden" data-tab="billing"><span data-icon="key"></span>Assinatura</button>
+       <a class="nav-item" href="/cozinha/" target="_blank" rel="noopener"><span data-icon="tv"></span>Tela da cozinha</a>
+       <a class="nav-item hidden" id="platform-link" href="/plataforma"><span data-icon="lock"></span>Painel do sistema</a>
+@@ -175,6 +176,90 @@
+       <p class="muted small">Somente contas cadastradas aqui conseguem entrar. Clientes não precisam de conta para fazer pedidos.</p>
+     </main>
+ 
++    <!-- ----- NOTA FISCAL (somente admin) ----- -->
++    <main id="tab-fiscal" class="panel hidden">
++      <div class="panel-head">
++        <div class="title-stack"><h1>Nota fiscal</h1><span class="muted">NFC-e dos pedidos, emitida pela Focus NFe</span></div>
++      </div>
++      <div id="fiscal-status"></div>
++      <form id="fiscal-form" class="fiscal-form" novalidate>
++        <section class="card fcard">
++          <h2>Emissão</h2>
++          <div class="grid-form three">
++            <label class="field check-line"><input type="checkbox" name="fiscal_enabled"><span><b>Emitir NFC-e dos pedidos</b><small>Desligado: nenhuma nota é enviada.</small></span></label>
++            <label class="field">Quando emitir
++              <select name="fiscal_emit_on">
++                <option value="entrega">Ao entregar / retirar o pedido</option>
++                <option value="pedido">Ao confirmar a encomenda</option>
++                <option value="manual">Só manual (botão no pedido)</option>
++              </select></label>
++            <label class="field">Ambiente
++              <select name="fiscal_env">
++                <option value="homologacao">Homologação (teste, sem valor fiscal)</option>
++                <option value="producao">Produção (nota de verdade)</option>
++              </select></label>
++          </div>
++        </section>
++
++        <section class="card fcard">
++          <h2>Empresa emitente</h2>
++          <p class="muted small" id="fiscal-cnpj"></p>
++          <div class="grid-form three">
++            <label class="field span-2">Razão social<input name="razao_social" maxlength="120" placeholder="Como está no CNPJ"></label>
++            <label class="field">Inscrição estadual<input name="inscricao_estadual" maxlength="20" inputmode="numeric"></label>
++            <label class="field">Regime tributário
++              <select name="regime_tributario">
++                <option value="1">Simples Nacional</option>
++                <option value="2">Simples Nacional (excesso de sublimite)</option>
++                <option value="4">Simples Nacional – MEI</option>
++                <option value="3">Regime Normal (Lucro Presumido/Real)</option>
++              </select></label>
++            <label class="field span-2">Rua<input name="addr_street" maxlength="120"></label>
++            <label class="field">Número<input name="addr_number" maxlength="20" placeholder="Ou SN"></label>
++            <label class="field">Bairro<input name="addr_district" maxlength="60"></label>
++            <label class="field">Cidade<input name="addr_city" maxlength="60"></label>
++            <label class="field">UF<input name="addr_uf" maxlength="2" placeholder="SP"></label>
++            <label class="field">CEP<input name="addr_zip" maxlength="9" inputmode="numeric" placeholder="00000-000"></label>
++          </div>
++        </section>
++
++        <section class="card fcard">
++          <h2>Tributação padrão <span class="hint">— preencha com o seu contador</span></h2>
++          <div class="grid-form three">
++            <label class="field">CFOP padrão<input name="fiscal_cfop" maxlength="4" inputmode="numeric"><span class="hint">5101 = produção própria · 5102 = revenda</span></label>
++            <label class="field">CSOSN / CST do ICMS<input name="fiscal_csosn" maxlength="3" inputmode="numeric"><span class="hint">Simples: ex. 102</span></label>
++            <label class="field">NCM padrão <span class="hint">(se o produto não tiver)</span><input name="fiscal_ncm_default" maxlength="8" inputmode="numeric"></label>
++            <label class="field">CST do PIS<input name="fiscal_pis_cst" maxlength="2" inputmode="numeric"></label>
++            <label class="field">CST do COFINS<input name="fiscal_cofins_cst" maxlength="2" inputmode="numeric"></label>
++            <label class="field">Forma de pagamento na nota
++              <select name="fiscal_payment_form">
++                <option value="01">Dinheiro</option><option value="17">Pix</option><option value="03">Cartão de crédito</option>
++                <option value="04">Cartão de débito</option><option value="10">Vale-alimentação</option><option value="11">Vale-refeição</option>
++                <option value="99">Outros</option>
++              </select></label>
++            <label class="field check-line span-3"><input type="checkbox" name="fiscal_ibs_cbs"><span><b>Informar IBS/CBS (Reforma Tributária)</b><small>Obrigatório para o Regime Normal. Usa as alíquotas-teste de 2026 (CBS 0,9% · IBS 0,1%).</small></span></label>
++            <label class="field ibs-only">CST do IBS/CBS<input name="fiscal_ibs_cbs_cst" maxlength="3" inputmode="numeric"></label>
++            <label class="field ibs-only">cClassTrib<input name="fiscal_cclasstrib" maxlength="6" inputmode="numeric"></label>
++          </div>
++        </section>
++
++        <section class="card fcard">
++          <h2>Certificado digital e CSC</h2>
++          <p class="muted small">Enviados direto para a Focus NFe — não ficam guardados neste sistema. Só preencha para cadastrar ou trocar.</p>
++          <div class="grid-form three">
++            <label class="field span-2">Certificado A1 (.pfx ou .p12)<input name="certificate" type="file" accept=".pfx,.p12"><span class="hint" id="cert-info"></span></label>
++            <label class="field">Senha do certificado<input name="certificate_password" type="password" autocomplete="new-password"></label>
++            <label class="field">ID do CSC (produção)<input name="csc_producao_id" maxlength="10" inputmode="numeric" placeholder="Ex.: 000001"></label>
++            <label class="field span-2">CSC (produção)<input name="csc_producao" maxlength="60" autocomplete="off"></label>
++            <label class="field">ID do CSC (homologação)<input name="csc_homologacao_id" maxlength="10" inputmode="numeric"></label>
++            <label class="field span-2">CSC (homologação)<input name="csc_homologacao" maxlength="60" autocomplete="off"></label>
++          </div>
++        </section>
++        <p class="field-error" id="fiscal-error" role="alert"></p>
++        <div class="fiscal-actions"><button class="btn primary lg" type="submit" id="fiscal-save">Salvar</button></div>
++      </form>
++    </main>
++
+     <!-- ----- ASSINATURA (somente admin) ----- -->
+     <main id="tab-billing" class="panel hidden">
+       <div class="panel-head">
+@@ -259,6 +344,14 @@
+         <label class="field span-2">Descrição<textarea name="description" maxlength="500"></textarea></label>
+         <label class="field span-2">URL da imagem <span class="hint">(opcional)</span><input name="image_url" type="url" placeholder="https://..."></label>
+       </div>
++      <details class="fiscal-fields">
++        <summary>Dados fiscais da nota <span class="hint">(o contador informa)</span></summary>
++        <div class="grid-form three">
++          <label class="field">NCM<input name="ncm" inputmode="numeric" maxlength="10" placeholder="Ex.: 19059090"></label>
++          <label class="field">CFOP <span class="hint">(se diferente)</span><input name="cfop" inputmode="numeric" maxlength="4" placeholder="Padrão da loja"></label>
++          <label class="field">CEST <span class="hint">(se tiver)</span><input name="cest" inputmode="numeric" maxlength="9"></label>
++        </div>
++      </details>
+       <p class="field-error" id="product-error" role="alert"></p>
+       <div class="actions">
+         <button type="button" class="btn ghost" id="product-cancel">Cancelar</button>
+diff --git a/web/css/atendimento.css b/web/css/atendimento.css
+index 8a0e5d5..adef833 100644
+--- a/web/css/atendimento.css
++++ b/web/css/atendimento.css
+@@ -330,3 +330,33 @@ pre.creds { margin: 14px 0 0; padding: 14px 16px; border-radius: 12px; backgroun
+ .bill-methods { display: flex; gap: 8px; flex-wrap: wrap; }
+ .bill-methods span { padding: 4px 10px; border-radius: 999px; background: var(--surface-2); font-size: 13px; font-weight: 600; }
+ .nav-item.locked { opacity: .45; }
++
++/* Nota fiscal */
++.fiscal-form { display: flex; flex-direction: column; gap: 14px; max-width: 1100px; }
++.fcard { padding: 18px 20px; }
++.fcard h2 { font-size: 18px; margin: 0 0 12px; }
++.fcard h2 .hint { font-family: var(--sans); font-weight: 500; font-size: 13px; }
++.grid-form.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
++.grid-form.three .span-2 { grid-column: span 2; }
++.grid-form.three .span-3 { grid-column: 1 / -1; }
++@media (max-width: 760px) { .grid-form.three { grid-template-columns: 1fr; } .grid-form.three .span-2 { grid-column: auto; } }
++.field.check-line { display: flex; flex-direction: row; align-items: flex-start; gap: 10px; align-self: center; }
++.check-line input { width: 20px; height: 20px; min-height: 0; padding: 0; margin-top: 2px; flex: none; }
++.check-line span { display: flex; flex-direction: column; gap: 2px; font-weight: 400; }
++.check-line b { font-weight: 600; }
++.check-line small { color: var(--ink-2); font-weight: 400; }
++.fiscal-actions { display: flex; justify-content: flex-end; }
++.fiscal-status { padding: 14px 18px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
++.fiscal-fields { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
++.fiscal-fields summary { cursor: pointer; font-weight: 600; font-size: 14px; }
++.fiscal-fields .grid-form { margin-top: 10px; }
++.nf-box { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
++.nf-box h3 { margin: 0; font-size: 16px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
++.nf-box .nf-actions { display: flex; gap: 8px; flex-wrap: wrap; }
++.nf-box .nf-msg { font-size: 14px; color: var(--ink-2); }
++.nf-box.err { border-color: var(--danger-line); background: var(--danger-soft); }
++.nf-box.err .nf-msg { color: var(--danger-ink); }
++.nf-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; }
++.nf-tag.ok { background: var(--ok-soft); color: var(--ok-ink); }
++.nf-tag.bad { background: var(--danger-soft); color: var(--danger-ink); }
++.nf-tag.wait { background: var(--info-soft); color: var(--info-ink); }
+diff --git a/web/css/base.css b/web/css/base.css
+index 35f67de..faf0f92 100644
+--- a/web/css/base.css
++++ b/web/css/base.css
+@@ -152,3 +152,4 @@ dialog.confirm .field { margin-top: 14px; }
+ .lic-ativa     { background: var(--ok-soft);     color: var(--ok-ink); }
+ .lic-atrasada  { background: var(--warn-soft);   color: var(--warn-ink); }
+ .lic-bloqueada { background: var(--danger-soft); color: var(--danger-ink); }
++.danger-text { color: var(--danger-ink) !important; }
+diff --git a/web/js/acompanhar.js b/web/js/acompanhar.js
+index 9437d6d..3bec1d9 100644
+--- a/web/js/acompanhar.js
++++ b/web/js/acompanhar.js
+@@ -40,7 +40,8 @@ async function consult(code, phone) {
+       <p>${o.fulfillment === 'entrega' ? 'Entrega' : 'Retirada'} em <strong>${esc(dateBr(o.delivery_date))}</strong>, ${esc(o.time_slot_label)}</p>
+       ${timeline}
+       <ul>${o.items.map((i) => `<li>${i.quantity} ${esc(i.unit_label)} — ${esc(i.product_name)}</li>`).join('')}</ul>
+-      <p><strong>Total: ${money(o.total_cents)}</strong></p>`;
++      <p><strong>Total: ${money(o.total_cents)}</strong></p>
++      ${o.nota_fiscal?.danfe_url ? `<p><a class="btn" href="${esc(o.nota_fiscal.danfe_url)}" target="_blank" rel="noopener">${icon('external', { size: 16 })}Ver nota fiscal (NFC-e nº ${esc(o.nota_fiscal.numero || '')})</a></p>` : ''}`;
+   } catch (e) {
+     out.innerHTML = '';
+     err.textContent = e.message;
+diff --git a/web/js/atendimento.js b/web/js/atendimento.js
+index b444338..d793336 100644
+--- a/web/js/atendimento.js
++++ b/web/js/atendimento.js
+@@ -179,6 +179,7 @@ async function enterApp() {
+ 
+   watchOrders(state.sb, {
+     establishmentId: est.id,
++    tables: ['orders', 'order_items', 'fiscal_notes'],
+     onChange: refreshVisible,
+     onStatus: (s) => {
+       const el = $('#rt-status');
+@@ -203,7 +204,7 @@ function tickClock() {
+ 
+ // ============================================================ navegação
+ function showTab(tab) {
+-  if (['sales', 'team', 'billing'].includes(tab) && !state.isAdmin) tab = 'orders'; // só administradores
++  if (['sales', 'team', 'billing', 'fiscal'].includes(tab) && !state.isAdmin) tab = 'orders'; // só administradores
+   if (state.locked && tab !== 'billing') {
+     toast('A licença venceu. Renove a assinatura para liberar o sistema.', 'error');
+     tab = 'billing';
+@@ -221,6 +222,7 @@ function refreshVisible() {
+   if (state.tab === 'products') loadProducts();
+   if (state.tab === 'team') loadTeam();
+   if (state.tab === 'billing') loadBilling();
++  if (state.tab === 'fiscal' && !state.fiscalDirty) loadFiscal();
+   if (state.openOrderId) openOrder(state.openOrderId, { silent: true });
+ }
+ 
+@@ -306,7 +308,7 @@ function orderCard(o, multiDay) {
+       <div class="items">${o.items.map((i) => `${i.quantity}× ${esc(i.product_name)}`).join(' · ')}</div>
+       ${notes.length ? `<span class="note-tag">${icon('alert', { size: 13, stroke: 2.2 })}${esc(notes[0])}${notes.length > 1 ? ` (+${notes.length - 1})` : ''}</span>` : ''}
+       ${o.status === 'em_producao' ? `<div class="prog-row"><div class="prog"><i style="width:${Math.max(6, (done / total) * 100)}%"></i></div><span>${done} de ${plural(total, 'item', 'itens')}</span></div>` : ''}
+-      <div class="row3"><strong>${money(o.total_cents)}</strong>${quickAction(o)}</div>
++      <div class="row3"><strong>${money(o.total_cents)}</strong>${nfTag(o.fiscal)}${quickAction(o)}</div>
+     </article>`;
+ }
+ 
+@@ -371,8 +373,12 @@ async function openOrder(id, { silent = false } = {}) {
+     if (!dlg.open) dlg.showModal();
+   }
+   try {
+-    const [o, events] = await Promise.all([staffApi(`/orders/${id}`), staffApi(`/orders/${id}/events`)]);
+-    renderOrderDetail(o, events);
++    const [o, events, fiscal] = await Promise.all([
++      staffApi(`/orders/${id}`), staffApi(`/orders/${id}/events`),
++      staffApi(`/orders/${id}/fiscal`).catch(() => null), // a cozinha não vê nota
++    ]);
++    renderOrderDetail(o, events, fiscal);
++    if (fiscal?.note?.status === 'processando') scheduleDetailRefresh(id);
+   } catch (e) {
+     $('#order-detail').innerHTML = `<div class="d-body"><p>${esc(e.message)}</p><button class="btn" data-close>Fechar</button></div>`;
+   }
+@@ -401,7 +407,7 @@ function primaryAction(o) {
+   return null;
+ }
+ 
+-function renderOrderDetail(o, events) {
++function renderOrderDetail(o, events, fiscal = null) {
+   const closed = !ACTIVE.includes(o.status);
+   const wa = whatsappLink(o);
+   const steps = [
+@@ -463,6 +469,7 @@ function renderOrderDetail(o, events) {
+         </div>
+         <div class="d-total"><span>Total</span><strong>${money(o.total_cents)}</strong></div>
+       </section>
++      ${nfSection(o, fiscal)}
+       <details class="history"><summary>Histórico (${events.length})</summary>
+         <ul>${events.map((ev) => `<li><span class="h-when">${esc(timeBr(ev.created_at))}</span><span class="h-what">${esc(describeEvent(ev, o))}</span><span class="h-who">${esc(ev.actor_name || (ev.event_type === 'status' && !ev.actor_name ? 'automático' : '—'))}</span></li>`).join('')}</ul>
+       </details>
+@@ -768,6 +775,8 @@ function openProductDialog(product = null) {
+   if (product) {
+     for (const k of ['name', 'category_id', 'unit_label', 'sort_order', 'min_quantity', 'max_quantity', 'description']) f[k].value = product[k] ?? '';
+     f.image_url.value = product.image_url ?? '';
++    for (const k of ['ncm', 'cfop', 'cest']) f[k].value = product[k] ?? '';
++    f.querySelector('.fiscal-fields').open = Boolean(product.ncm || product.cfop || product.cest);
+     f.price.value = (product.price_cents / 100).toFixed(2).replace('.', ',');
+   }
+   $('#product-dialog').showModal();
+@@ -799,6 +808,7 @@ async function saveProduct(e) {
+     unit_label: f.unit_label.value, sort_order: Number(f.sort_order.value || 0),
+     min_quantity: Number(f.min_quantity.value), max_quantity: Number(f.max_quantity.value),
+     description: f.description.value, image_url: f.image_url.value || null,
++    ncm: f.ncm.value.trim() || null, cfop: f.cfop.value.trim() || null, cest: f.cest.value.trim() || null,
+   };
+   try {
+     if (f.dataset.id) await staffApi(`/products/${f.dataset.id}`, { method: 'PATCH', body });
+@@ -813,6 +823,173 @@ async function saveProduct(e) {
+ // ============================================================ equipe e acessos (admin)
+ const ROLE_CLASS = { admin: 'r-admin', atendimento: 'r-atendimento', cozinha: 'r-cozinha' };
+ 
++// ---------------------------------------------------- nota fiscal do pedido
++function nfTag(f) {
++  if (!f) return '';
++  if (f.status === 'autorizada') return `<span class="nf-tag ok" title="NFC-e autorizada">${icon('receipt', { size: 12, stroke: 2.2 })}NFC-e ${esc(f.numero || '')}</span>`;
++  if (f.status === 'erro' || f.status === 'cancelamento_negado') return `<span class="nf-tag bad" title="Problema na nota fiscal">${icon('receipt', { size: 12, stroke: 2.2 })}Nota com erro</span>`;
++  if (f.status === 'processando') return `<span class="nf-tag wait">${icon('receipt', { size: 12, stroke: 2.2 })}Emitindo…</span>`;
++  return '';
++}
++
++function nfSection(o, fiscal) {
++  if (!fiscal || (!fiscal.enabled && !fiscal.note)) return '';
++  const n = fiscal.note;
++  const test = (n?.env || fiscal.env) === 'homologacao' ? '<span class="badge st-recebido" title="Ambiente de testes">Teste · sem valor fiscal</span>' : '';
++  const emitBtn = (label) => `<button type="button" class="btn sm primary" data-nf-emit="${o.id}">${icon('receipt', { size: 16 })}${label}</button>`;
++  let body;
++  if (!n) {
++    if (o.status === 'cancelado') return '';
++    const when = { entrega: 'quando o pedido for marcado como entregue/retirado', pedido: 'ao confirmar a encomenda', manual: 'só pelo botão abaixo' }[fiscal.emit_on] || '';
++    body = `<p class="nf-msg">Ainda não emitida. A nota sai automaticamente ${esc(when)}.</p>
++      <div class="nf-actions">${emitBtn('Emitir agora')}</div>`;
++  } else if (n.status === 'autorizada') {
++    body = `<p class="nf-msg">Autorizada pela SEFAZ${n.authorized_at ? ` em ${esc(timeBr(n.authorized_at))}` : ''}.</p>
++      <div class="nf-actions">
++        ${n.danfe_url ? `<a class="btn sm" href="${esc(n.danfe_url)}" target="_blank" rel="noopener">${icon('external', { size: 16 })}Ver nota (DANFE)</a>` : ''}
++        ${n.qrcode_url ? `<a class="btn sm ghost" href="${esc(n.qrcode_url)}" target="_blank" rel="noopener">Consultar na SEFAZ</a>` : ''}
++        ${n.can_cancel ? `<button type="button" class="btn sm ghost danger-text" data-nf-cancel="${o.id}">Cancelar nota</button>` : ''}
++      </div>`;
++  } else if (n.status === 'processando') {
++    body = '<p class="nf-msg">Enviando para a SEFAZ… atualiza sozinho em instantes.</p>';
++  } else if (n.status === 'erro') {
++    body = `<p class="nf-msg">${esc(n.message || 'A nota não foi autorizada.')}</p>
++      <div class="nf-actions">${o.status !== 'cancelado' ? emitBtn('Tentar de novo') : ''}</div>`;
++  } else if (n.status === 'cancelada') {
++    body = `<p class="nf-msg">Nota cancelada${n.cancelled_at ? ` em ${esc(timeBr(n.cancelled_at))}` : ''}.</p>`;
++  } else {
++    body = `<p class="nf-msg">${esc(n.message || '')}</p>`;
++  }
++  const title = n?.numero ? `NFC-e nº ${esc(n.numero)}${n.serie ? ` · série ${esc(n.serie)}` : ''}` : 'Nota fiscal (NFC-e)';
++  const st = n ? `<span class="nf-tag ${n.status === 'autorizada' ? 'ok' : (['erro', 'cancelamento_negado'].includes(n.status) ? 'bad' : 'wait')}">${esc({ autorizada: 'Autorizada', erro: 'Erro', processando: 'Emitindo', cancelada: 'Cancelada', cancelamento_negado: 'Cancelamento negado', pendente: 'Pendente' }[n.status] || n.status)}</span>` : '';
++  return `<section class="nf-box ${['erro', 'cancelamento_negado'].includes(n?.status) ? 'err' : ''}">
++    <h3>${icon('receipt', { size: 18 })}${title} ${st} ${test}</h3>${body}</section>`;
++}
++
++let detailTimer = null;
++function scheduleDetailRefresh(id) {
++  clearTimeout(detailTimer);
++  detailTimer = setTimeout(() => { if (state.openOrderId === id) openOrder(id, { silent: true }); }, 2500);
++}
++
++async function emitNote(orderId, btn) {
++  btn.disabled = true;
++  btn.textContent = 'Emitindo…';
++  try {
++    const { note } = await staffApi(`/orders/${orderId}/fiscal/emit`, { method: 'POST' });
++    if (note?.status === 'autorizada') toast(`NFC-e nº ${note.numero} autorizada.`, 'ok');
++    else if (note?.status === 'erro') toast(note.message, 'error', 8000);
++  } catch (e) { toast(e.message, 'error', 8000); }
++  openOrder(orderId, { silent: true });
++  loadOrders();
++}
++
++async function cancelNote(orderId) {
++  const motivo = await confirmDialog({
++    title: 'Cancelar a nota fiscal?', danger: true, confirmText: 'Cancelar nota',
++    message: 'A SEFAZ só aceita o cancelamento da NFC-e até 30 minutos depois da emissão.',
++    input: { label: 'Motivo (mín. 15 caracteres)', minLength: 15, placeholder: 'Ex.: Nota emitida com o produto errado' },
++  });
++  if (!motivo) return;
++  try {
++    const { note } = await staffApi(`/orders/${orderId}/fiscal/cancel`, { method: 'POST', body: { justificativa: motivo } });
++    toast(note.status === 'cancelada' ? 'Nota cancelada.' : note.message, note.status === 'cancelada' ? 'ok' : 'error', 8000);
++  } catch (e) { toast(e.message, 'error', 8000); }
++  openOrder(orderId, { silent: true });
++}
++
++// ---------------------------------------------------- configuração fiscal (admin)
++const FISCAL_TEXT = ['razao_social', 'inscricao_estadual', 'addr_street', 'addr_number', 'addr_district', 'addr_city', 'addr_uf', 'addr_zip',
++  'fiscal_cfop', 'fiscal_csosn', 'fiscal_ncm_default', 'fiscal_pis_cst', 'fiscal_cofins_cst', 'fiscal_ibs_cbs_cst', 'fiscal_cclasstrib'];
++const FISCAL_SELECT = ['fiscal_emit_on', 'fiscal_env', 'regime_tributario', 'fiscal_payment_form'];
++
++async function loadFiscal() {
++  try {
++    const c = await staffApi('/fiscal');
++    state.fiscal = c;
++    const f = $('#fiscal-form');
++    f.fiscal_enabled.checked = c.fiscal_enabled;
++    f.fiscal_ibs_cbs.checked = c.fiscal_ibs_cbs;
++    for (const k of FISCAL_TEXT) f[k].value = c[k] ?? '';
++    for (const k of FISCAL_SELECT) f[k].value = String(c[k] ?? f[k].value);
++    for (const k of ['certificate', 'certificate_password', 'csc_producao_id', 'csc_producao', 'csc_homologacao_id', 'csc_homologacao']) f[k].value = '';
++    toggleIbs();
++    $('#fiscal-cnpj').textContent = c.doc_type === 'cnpj'
++      ? `CNPJ ${String(c.doc_number).replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')} (do cadastro da loja)`
++      : 'Atenção: esta loja está cadastrada com CPF. NFC-e só pode ser emitida com CNPJ.';
++    $('#cert-info').textContent = c.fiscal_cert_valid_until ? `Certificado atual válido até ${dateFull(c.fiscal_cert_valid_until)}.` : 'Nenhum certificado enviado ainda.';
++    renderFiscalStatus(c);
++    state.fiscalDirty = false;
++  } catch (e) {
++    $('#fiscal-status').innerHTML = `<p class="empty">${esc(e.message)}</p>`;
++  }
++}
++
++function renderFiscalStatus(c) {
++  let kind; let text;
++  if (!c.focus_ready) { kind = 'warn'; text = 'O emissor (Focus NFe) ainda não foi configurado pelo suporte do sistema. Você já pode preencher os dados.'; }
++  else if (!c.company_registered) { kind = 'info'; text = 'Preencha os dados, envie o certificado A1 e o CSC e clique em Salvar para cadastrar a loja no emissor.'; }
++  else if (!c.ready) { kind = 'warn'; text = c.fiscal_enabled ? `Falta o token do ambiente de ${c.fiscal_env === 'producao' ? 'produção' : 'homologação'}. Confira o CSC desse ambiente e salve de novo.` : 'Cadastro concluído. Ligue "Emitir NFC-e dos pedidos" para começar.'; }
++  else { kind = 'ok'; text = `Tudo pronto: as notas saem em ${c.fiscal_env === 'producao' ? 'PRODUÇÃO (valor fiscal)' : 'homologação (teste)'}.`; }
++  const cls = { ok: 'info', info: 'info', warn: 'warn' }[kind];
++  $('#fiscal-status').innerHTML = `<div class="license-banner ${cls}">${icon(kind === 'ok' ? 'check' : 'alert', { size: 18 })}<span>${esc(text)}</span></div>`;
++}
++
++function toggleIbs() {
++  const on = $('#fiscal-form').fiscal_ibs_cbs.checked;
++  $$('#fiscal-form .ibs-only').forEach((el) => el.classList.toggle('hidden', !on));
++}
++
++function fileToBase64(file) {
++  return new Promise((resolve, reject) => {
++    const r = new FileReader();
++    r.onload = () => resolve(String(r.result).split(',')[1] || '');
++    r.onerror = () => reject(new Error('Não foi possível ler o arquivo do certificado.'));
++    r.readAsDataURL(file);
++  });
++}
++
++async function saveFiscal(e) {
++  e.preventDefault();
++  const f = e.target;
++  const btn = $('#fiscal-save');
++  $('#fiscal-error').textContent = '';
++  const body = { fiscal_enabled: f.fiscal_enabled.checked, fiscal_ibs_cbs: f.fiscal_ibs_cbs.checked };
++  for (const k of FISCAL_TEXT) {
++    const v = f[k].value.trim();
++    if (v || state.fiscal?.[k]) body[k] = v || null;
++  }
++  // campos de texto obrigatórios no servidor não aceitam null: só envia se tiver valor
++  for (const k of ['razao_social', 'inscricao_estadual', 'addr_street', 'addr_number', 'addr_district', 'addr_city', 'addr_uf', 'addr_zip', 'fiscal_cfop', 'fiscal_csosn', 'fiscal_pis_cst', 'fiscal_cofins_cst']) {
++    if (!body[k]) delete body[k];
++  }
++  for (const k of FISCAL_SELECT) body[k] = k === 'regime_tributario' ? Number(f[k].value) : f[k].value;
++  const csc = {};
++  for (const [k, name] of [['producao_id', 'csc_producao_id'], ['producao', 'csc_producao'], ['homologacao_id', 'csc_homologacao_id'], ['homologacao', 'csc_homologacao']]) {
++    if (f[name].value.trim()) csc[k] = f[name].value.trim();
++  }
++  if (Object.keys(csc).length) body.csc = csc;
++  const file = f.certificate.files[0];
++  btn.disabled = true;
++  btn.textContent = 'Salvando…';
++  try {
++    if (file) {
++      if (file.size > 500_000) throw new Error('Arquivo do certificado grande demais. Confira se é o .pfx do certificado A1.');
++      body.certificate_base64 = await fileToBase64(file);
++      body.certificate_password = f.certificate_password.value;
++    }
++    const c = await staffApi('/fiscal', { method: 'PUT', body });
++    toast(c.company_registered ? 'Dados fiscais salvos e enviados ao emissor.' : 'Dados fiscais salvos.', 'ok', 6000);
++    await loadFiscal();
++  } catch (ex) {
++    $('#fiscal-error').textContent = ex.details?.[0]?.message || ex.message;
++    try { await loadFiscal(); } catch { /* ignora */ }
++  } finally {
++    btn.disabled = false;
++    btn.textContent = 'Salvar';
++  }
++}
++
+ // ---------------------------------------------------- licença / assinatura
+ let bannerEl;
+ function placeLicenseBanner() {
+@@ -1143,6 +1320,15 @@ function bindEvents() {
+   // equipe
+   $('#new-member').addEventListener('click', openMemberDialog);
+   $('#billing-refresh').addEventListener('click', refreshBilling);
++  $('#fiscal-form').addEventListener('submit', saveFiscal);
++  $('#fiscal-form').addEventListener('input', () => { state.fiscalDirty = true; });
++  $('#fiscal-form').fiscal_ibs_cbs.addEventListener('change', toggleIbs);
++  document.addEventListener('click', (e) => {
++    const em = e.target.closest('[data-nf-emit]');
++    if (em) emitNote(em.dataset.nfEmit, em);
++    const ca = e.target.closest('[data-nf-cancel]');
++    if (ca) cancelNote(ca.dataset.nfCancel);
++  });
+   $('#blocked-logout').addEventListener('click', logout);
+   document.addEventListener('submit', (e) => { if (e.target.id === 'subscribe-form') subscribe(e); });
+   document.addEventListener('click', (e) => {
+diff --git a/web/js/cliente.js b/web/js/cliente.js
+index d46aebc..365daf1 100644
+--- a/web/js/cliente.js
++++ b/web/js/cliente.js
+@@ -321,9 +321,13 @@ async function submitOrder(e) {
+   if (String(fd.get('customer_name') || '').trim().length < 2) return fail('Informe seu nome.', form.customer_name);
+   if (String(fd.get('customer_phone') || '').replace(/\D/g, '').length < 10) return fail('Informe o WhatsApp com DDD.', form.customer_phone);
+ 
++  const cpf = String(fd.get('customer_cpf') || '').replace(/\D/g, '');
++  if (cpf && cpf.length !== 11) return fail('CPF incompleto. Confira os 11 números ou deixe em branco.', form.customer_cpf);
++
+   const payload = {
+     customer_name: fd.get('customer_name'),
+     customer_phone: fd.get('customer_phone'),
++    ...(cpf ? { customer_cpf: cpf } : {}),
+     fulfillment,
+     delivery_address: fulfillment === 'entrega' ? fd.get('delivery_address') : '',
+     delivery_date: state.date,
+@@ -463,6 +467,13 @@ async function loadCatalog() {
+   state.catalog = await api(`${STORE_API}/catalog`);
+ }
+ 
++// máscara simples do CPF: 000.000.000-00
++document.addEventListener('input', (e) => {
++  if (e.target.name !== 'customer_cpf') return;
++  const d = e.target.value.replace(/\D/g, '').slice(0, 11);
++  e.target.value = d.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d{1,2})$/, '.$1-$2');
++});
++
+ function showNotFound(err) {
+   if (err?.code === 'LOJA_INDISPONIVEL') {
+     $('#notfound-title').textContent = 'Encomendas pausadas';
+diff --git a/web/js/common.js b/web/js/common.js
+index 8fda143..4c4a994 100644
+--- a/web/js/common.js
++++ b/web/js/common.js
+@@ -169,6 +169,7 @@ const ICONS = {
+   copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>',
+   key: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/>',
+   lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
++  receipt: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z"/><path d="M9 8h6M9 12h6M9 16h3"/>',
+   external: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
+   building: '<path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16M15 9h4a1 1 0 0 1 1 1v11M3 21h18M8 8h3M8 12h3M8 16h3"/>',
+ };
+diff --git a/web/loja.html b/web/loja.html
+index 08902be..6673331 100644
+--- a/web/loja.html
++++ b/web/loja.html
+@@ -156,6 +156,9 @@
+               <input name="customer_phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(11) 99999-8888" required>
+               <span class="hint">Avisamos por aqui quando o pedido estiver pronto.</span>
+             </label>
++            <label class="field"><span>CPF na nota <span class="hint">(opcional)</span></span>
++              <input name="customer_cpf" inputmode="numeric" autocomplete="off" maxlength="14" placeholder="000.000.000-00">
++            </label>
+           </div>
+           <label class="field"><span>Observações do pedido <span class="hint">(opcional)</span></span>
+             <textarea name="notes" maxlength="500" placeholder="Ex.: embalar separado, texto do bolo, ponto do pão…"></textarea>
+diff --git a/backend/src/lib/focus.js b/backend/src/lib/focus.js
+new file mode 100755
+index 0000000..93e16b4
+--- /dev/null
++++ b/backend/src/lib/focus.js
+@@ -0,0 +1,103 @@
++// Cliente mínimo da API da Focus NFe (emissão de NFC-e).
++// Docs: https://doc.focusnfe.com.br
++//  - Autenticação: HTTP Basic, usuário = token, senha vazia.
++//  - Homologação (testes, sem valor fiscal): https://homologacao.focusnfe.com.br
++//  - Produção: https://api.focusnfe.com.br
++//  - A emissão de NFC-e é síncrona: autoriza ou rejeita na mesma requisição.
++//
++// Dois tipos de token:
++//  - FOCUS_TOKEN (do .env): token principal da SUA conta (dono do sistema),
++//    usado para cadastrar as empresas (lojas) pela API de Empresas.
++//  - token de cada loja (produção e homologação): devolvido no cadastro da
++//    empresa e guardado em fiscal_secrets; é ele que emite as notas.
++import { AppError } from './errors.js';
++
++export const FOCUS_BASES = {
++  homologacao: 'https://homologacao.focusnfe.com.br',
++  producao: 'https://api.focusnfe.com.br',
++};
++
++export function createFocus({ masterToken = '', fetchImpl = globalThis.fetch, timeoutMs = 30_000, bases = FOCUS_BASES } = {}) {
++  async function call(base, token, method, path, body) {
++    if (!token) throw new AppError(409, 'FISCAL_NAO_CONFIGURADO', 'A emissão de nota fiscal desta loja ainda não foi configurada.');
++    let res;
++    try {
++      res = await fetchImpl(`${base}${path}`, {
++        method,
++        headers: {
++          Authorization: `Basic ${Buffer.from(`${token}:`).toString('base64')}`,
++          'Content-Type': 'application/json',
++          Accept: 'application/json',
++        },
++        body: body ? JSON.stringify(body) : undefined,
++        signal: AbortSignal.timeout(timeoutMs),
++      });
++    } catch {
++      const e = new AppError(502, 'FOCUS_INDISPONIVEL', 'Não foi possível falar com o emissor de notas (Focus NFe). Tente de novo em instantes.');
++      e.retryable = true;
++      throw e;
++    }
++    const json = await res.json().catch(() => ({}));
++    return { httpStatus: res.status, json };
++  }
++
++  const message = (json, fallback) =>
++    json?.mensagem_sefaz || json?.mensagem || json?.erros?.map((e) => e.mensagem).join(' ') || fallback;
++
++  return {
++    masterConfigured: Boolean(masterToken),
++    absolute: (env, path) => (path ? (/^https?:/i.test(path) ? path : `${bases[env]}${path}`) : null),
++
++    /** Cadastra (ou atualiza) a loja como empresa emitente na sua conta Focus. */
++    async saveCompany(companyId, data) {
++      if (!masterToken) {
++        throw new AppError(503, 'FOCUS_SEM_TOKEN', 'O dono do sistema ainda não configurou a conta da Focus NFe (FOCUS_TOKEN no .env do servidor).');
++      }
++      const path = companyId ? `/v2/empresas/${encodeURIComponent(companyId)}` : '/v2/empresas';
++      const { httpStatus, json } = await call(bases.producao, masterToken, companyId ? 'PUT' : 'POST', path, data);
++      if (httpStatus >= 400) {
++        throw new AppError(422, 'FOCUS_EMPRESA', `Focus NFe recusou o cadastro: ${message(json, `erro ${httpStatus}`)}`);
++      }
++      return {
++        id: json.id != null ? String(json.id) : companyId,
++        tokenProducao: json.token_producao ?? null,
++        tokenHomologacao: json.token_homologacao ?? null,
++        certValidUntil: json.certificado_valido_ate ?? null,
++      };
++    },
++
++    /** Emite a NFC-e (síncrono). Devolve a resposta da Focus normalizada. */
++    async emitNfce(env, token, ref, nfce) {
++      const { httpStatus, json } = await call(bases[env], token, 'POST', `/v2/nfce?ref=${encodeURIComponent(ref)}`, nfce);
++      return normalize(httpStatus, json, message);
++    },
++
++    async getNfce(env, token, ref) {
++      const { httpStatus, json } = await call(bases[env], token, 'GET', `/v2/nfce/${encodeURIComponent(ref)}`);
++      return normalize(httpStatus, json, message);
++    },
++
++    /** Cancela (a SEFAZ aceita só até 30 min depois da emissão). */
++    async cancelNfce(env, token, ref, justificativa) {
++      const { httpStatus, json } = await call(bases[env], token, 'DELETE', `/v2/nfce/${encodeURIComponent(ref)}`, { justificativa });
++      return normalize(httpStatus, json, message);
++    },
++  };
++}
++
++function normalize(httpStatus, json, message) {
++  return {
++    httpStatus,
++    status: json.status ?? (httpStatus >= 400 ? 'erro' : null), // autorizado | erro_autorizacao | denegado | cancelado | processando_autorizacao
++    code: json.codigo ?? null,                                   // ex.: "nfe_nao_encontrada", "already_processed"
++    sefazStatus: json.status_sefaz ?? null,
++    message: message(json, httpStatus >= 400 ? `erro ${httpStatus}` : ''),
++    chave: json.chave_nfe ?? null,
++    numero: json.numero ?? null,
++    serie: json.serie ?? null,
++    danfe: json.caminho_danfe ?? null,
++    xml: json.caminho_xml_nota_fiscal ?? null,
++    qrcode: json.qrcode_url ?? null,
++    consulta: json.url_consulta_nf ?? null,
++  };
++}
+diff --git a/backend/src/services/fiscal.service.js b/backend/src/services/fiscal.service.js
+new file mode 100755
+index 0000000..213920d
+--- /dev/null
++++ b/backend/src/services/fiscal.service.js
+@@ -0,0 +1,379 @@
++// Nota fiscal (NFC-e, modelo 65) de cada pedido, emitida pela Focus NFe.
++//
++// Quando emite (configurável por loja, establishments.fiscal_emit_on):
++//   'entrega' (padrão) -> ao marcar o pedido como entregue/retirado
++//   'pedido'           -> assim que o cliente confirma a encomenda
++//   'manual'           -> só pelo botão "Emitir nota" no atendimento
++//
++// O que o contador precisa definir (tela Atendimento > Nota fiscal):
++// regime tributário, CFOP, CSOSN/CST, PIS/COFINS e o NCM de cada produto.
++// Nada aqui decide tributação por conta própria: são os valores informados.
++import { AppError, unwrap } from '../lib/errors.js';
++import { createFocus } from '../lib/focus.js';
++
++const FISCAL_FIELDS = [
++  'id', 'slug', 'name', 'doc_type', 'doc_number', 'phone', 'timezone',
++  'fiscal_enabled', 'fiscal_env', 'fiscal_emit_on', 'inscricao_estadual', 'regime_tributario', 'razao_social',
++  'addr_street', 'addr_number', 'addr_district', 'addr_city', 'addr_uf', 'addr_zip',
++  'fiscal_cfop', 'fiscal_csosn', 'fiscal_pis_cst', 'fiscal_cofins_cst', 'fiscal_ncm_default', 'fiscal_payment_form',
++  'fiscal_ibs_cbs', 'fiscal_ibs_cbs_cst', 'fiscal_cclasstrib', 'focus_company_id', 'fiscal_cert_valid_until',
++].join(', ');
++
++// Alíquotas-teste de 2026 da Reforma Tributária (CBS 0,9% e IBS 0,1%)
++const IBS_CBS_TEST = { cbs: '0.90', ibsUf: '0.10', ibsMun: '0.00' };
++
++const money = (cents) => (Number(cents) / 100).toFixed(2);
++const UNITS = { un: 'UN', unidade: 'UN', kg: 'KG', g: 'G', cento: 'CENTO', dz: 'DZ', duzia: 'DZ', pct: 'PCT', fatia: 'FATIA' };
++const unitOf = (label) => UNITS[String(label || '').toLowerCase().trim()] || String(label || 'UN').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) || 'UN';
++
++/** "2026-11-23T14:55:00-03:00" no fuso da loja (a SEFAZ aceita até 5 min de diferença). */
++export function isoWithOffset(date, timeZone) {
++  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
++    timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
++  }).formatToParts(date).map((p) => [p.type, p.value]));
++  const local = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
++  const offMin = Math.round((local - Math.floor(date.getTime() / 1000) * 1000) / 60_000);
++  const sign = offMin >= 0 ? '+' : '-';
++  const abs = Math.abs(offMin);
++  const off = `${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`;
++  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}${off}`;
++}
++
++/**
++ * Monta o JSON da NFC-e no formato da Focus NFe.
++ * Lança AppError com mensagem clara se faltar dado fiscal (ex.: NCM).
++ */
++export function buildNfce(est, order, products, now = new Date()) {
++  if (est.doc_type !== 'cnpj') {
++    throw new AppError(422, 'FISCAL_SEM_CNPJ', 'NFC-e só pode ser emitida por loja com CNPJ.');
++  }
++  const byId = new Map(products.map((p) => [Number(p.id), p]));
++  const simples = [1, 2, 4].includes(Number(est.regime_tributario));
++  const items = order.items.map((it, i) => {
++    const p = byId.get(Number(it.product_id)) ?? {};
++    const ncm = p.ncm || est.fiscal_ncm_default;
++    if (!ncm) {
++      throw new AppError(422, 'FISCAL_SEM_NCM', `Falta o NCM do produto "${it.product_name}". Cadastre em Produtos (ou um NCM padrão em Nota fiscal).`);
++    }
++    const unit = unitOf(it.unit_label);
++    const item = {
++      numero_item: i + 1,
++      codigo_produto: String(it.product_id),
++      descricao: it.product_name,
++      codigo_ncm: ncm,
++      cfop: p.cfop || est.fiscal_cfop,
++      unidade_comercial: unit,
++      quantidade_comercial: Number(it.quantity),
++      valor_unitario_comercial: money(it.unit_price_cents),
++      valor_bruto: money(Number(it.unit_price_cents) * Number(it.quantity)),
++      unidade_tributavel: unit,
++      quantidade_tributavel: Number(it.quantity),
++      valor_unitario_tributavel: money(it.unit_price_cents),
++      icms_origem: '0',
++      icms_situacao_tributaria: est.fiscal_csosn, // CSOSN no Simples; CST no Regime Normal
++      pis_situacao_tributaria: est.fiscal_pis_cst,
++      cofins_situacao_tributaria: est.fiscal_cofins_cst,
++    };
++    if (p.cest) item.cest = p.cest;
++    if (est.fiscal_ibs_cbs) {
++      Object.assign(item, {
++        ibs_cbs_situacao_tributaria: est.fiscal_ibs_cbs_cst,
++        ibs_cbs_classificacao_tributaria: est.fiscal_cclasstrib,
++        ibs_cbs_base_calculo: item.valor_bruto,
++        ibs_uf_aliquota: IBS_CBS_TEST.ibsUf,
++        ibs_mun_aliquota: IBS_CBS_TEST.ibsMun,
++        cbs_aliquota: IBS_CBS_TEST.cbs,
++      });
++    }
++    return item;
++  });
++
++  const nfce = {
++    cnpj_emitente: est.doc_number,
++    data_emissao: isoWithOffset(now, est.timezone || 'America/Sao_Paulo'),
++    natureza_operacao: 'VENDA AO CONSUMIDOR',
++    presenca_comprador: order.fulfillment === 'entrega' ? '4' : '1', // 4 = entrega em domicílio, 1 = presencial
++    modalidade_frete: '9',  // sem frete
++    local_destino: '1',     // operação interna
++    items,
++    formas_pagamento: [{ forma_pagamento: est.fiscal_payment_form || '01', valor_pagamento: money(order.total_cents) }],
++    informacoes_adicionais_contribuinte: `Pedido #${order.code}${simples ? ' - Documento emitido por ME ou EPP optante pelo Simples Nacional' : ''}`,
++  };
++  if (order.customer_cpf) {
++    nfce.cpf_destinatario = order.customer_cpf;
++    nfce.nome_destinatario = String(order.customer_name).slice(0, 60);
++  }
++  return nfce;
++}
++
++export function createFiscalService(db, { focus = createFocus(), log = console } = {}) {
++  async function loadEst(estId) {
++    const { data, error } = await db.from('establishments').select(FISCAL_FIELDS).eq('id', estId).maybeSingle();
++    if (error) unwrap({ error });
++    if (!data) throw new AppError(404, 'LOJA_NAO_ENCONTRADA', 'Loja não encontrada.');
++    return data;
++  }
++
++  async function tokens(estId) {
++    const { data, error } = await db.from('fiscal_secrets').select('focus_token_producao, focus_token_homologacao')
++      .eq('establishment_id', estId).maybeSingle();
++    if (error) unwrap({ error });
++    return { producao: data?.focus_token_producao || null, homologacao: data?.focus_token_homologacao || null };
++  }
++
++  // ------------------------------------------------------------ configuração (admin da loja)
++  async function getConfig(estId) {
++    const est = await loadEst(estId);
++    const tk = await tokens(estId);
++    const { focus_company_id: companyId, ...cfg } = est;
++    return {
++      ...cfg,
++      company_registered: Boolean(companyId),
++      token_ok: { producao: Boolean(tk.producao), homologacao: Boolean(tk.homologacao) },
++      focus_ready: focus.masterConfigured,
++      ready: Boolean(est.fiscal_enabled && companyId && tk[est.fiscal_env]),
++    };
++  }
++
++  function companyPayload(est, extra = {}) {
++    return {
++      nome: est.razao_social || est.name,
++      nome_fantasia: est.name,
++      cnpj: est.doc_number,
++      inscricao_estadual: est.inscricao_estadual,
++      regime_tributario: Number(est.regime_tributario),
++      logradouro: est.addr_street,
++      numero: est.addr_number,
++      bairro: est.addr_district,
++      municipio: est.addr_city,
++      uf: est.addr_uf,
++      cep: est.addr_zip,
++      telefone: est.phone || undefined,
++      habilita_nfce: true,
++      ...extra,
++    };
++  }
++
++  /** Envia o cadastro da loja para a Focus (com certificado e CSC, quando informados). */
++  async function syncCompany(estId, { certificateBase64, certificatePassword, csc } = {}) {
++    const est = await loadEst(estId);
++    if (est.doc_type !== 'cnpj') throw new AppError(422, 'FISCAL_SEM_CNPJ', 'NFC-e só pode ser emitida por loja com CNPJ. Esta loja está cadastrada com CPF.');
++    const missing = [['inscricao_estadual', 'inscrição estadual'], ['addr_street', 'rua'], ['addr_number', 'número'],
++      ['addr_district', 'bairro'], ['addr_city', 'cidade'], ['addr_uf', 'UF'], ['addr_zip', 'CEP']]
++      .filter(([k]) => !est[k]).map(([, l]) => l);
++    if (missing.length) throw new AppError(422, 'FISCAL_INCOMPLETO', `Preencha antes: ${missing.join(', ')}.`);
++
++    const extra = {};
++    if (certificateBase64) Object.assign(extra, { arquivo_certificado_base64: certificateBase64, senha_certificado: certificatePassword });
++    if (csc?.producao_id && csc?.producao) Object.assign(extra, { id_token_nfce_producao: csc.producao_id, csc_nfce_producao: csc.producao });
++    if (csc?.homologacao_id && csc?.homologacao) Object.assign(extra, { id_token_nfce_homologacao: csc.homologacao_id, csc_nfce_homologacao: csc.homologacao });
++    if (!est.focus_company_id && !certificateBase64) {
++      throw new AppError(422, 'FISCAL_SEM_CERTIFICADO', 'Envie o certificado digital A1 (.pfx) da loja para concluir o cadastro.');
++    }
++
++    const r = await focus.saveCompany(est.focus_company_id, companyPayload(est, extra));
++    const row = { focus_company_id: r.id };
++    if (r.certValidUntil) row.fiscal_cert_valid_until = r.certValidUntil;
++    unwrap(await db.from('establishments').update(row).eq('id', estId));
++    if (r.tokenProducao || r.tokenHomologacao) {
++      const secret = { establishment_id: estId, updated_at: new Date().toISOString() };
++      if (r.tokenProducao) secret.focus_token_producao = r.tokenProducao;
++      if (r.tokenHomologacao) secret.focus_token_homologacao = r.tokenHomologacao;
++      const { data: exists } = await db.from('fiscal_secrets').select('establishment_id').eq('establishment_id', estId).maybeSingle();
++      unwrap(exists
++        ? await db.from('fiscal_secrets').update(secret).eq('establishment_id', estId)
++        : await db.from('fiscal_secrets').insert(secret));
++    }
++    return getConfig(estId);
++  }
++
++  async function saveConfig(estId, cfg) {
++    const { csc, certificate_base64: cert, certificate_password: certPwd, ...fields } = cfg;
++    if (Object.keys(fields).length) unwrap(await db.from('establishments').update(fields).eq('id', estId));
++    const est = await loadEst(estId);
++    // reenvia para a Focus quando já existe cadastro, ou quando chegou certificado/CSC
++    if (cert || csc || est.focus_company_id) {
++      return syncCompany(estId, { certificateBase64: cert, certificatePassword: certPwd, csc });
++    }
++    return getConfig(estId);
++  }
++
++  // ------------------------------------------------------------ notas
++  const view = (n) => n && {
++    status: n.status, env: n.env, numero: n.numero, serie: n.serie, chave: n.chave, message: n.message,
++    danfe_url: focus.absolute(n.env, n.danfe_url), xml_url: focus.absolute(n.env, n.xml_url),
++    qrcode_url: n.qrcode_url, consulta_url: n.consulta_url, attempts: n.attempts,
++    authorized_at: n.authorized_at, cancelled_at: n.cancelled_at, updated_at: n.updated_at,
++    can_cancel: n.status === 'autorizada' && n.authorized_at && Date.now() - new Date(n.authorized_at).getTime() < 30 * 60_000,
++  };
++
++  async function noteRow(estId, orderId) {
++    const { data, error } = await db.from('fiscal_notes').select('*').eq('establishment_id', estId).eq('order_id', orderId).maybeSingle();
++    if (error) unwrap({ error });
++    return data;
++  }
++
++  async function noteFor(estId, orderId) {
++    return view(await noteRow(estId, orderId));
++  }
++
++  /** Nota do pedido + se a loja emite nota e quando (para a tela do pedido). */
++  async function orderFiscal(estId, orderId) {
++    const { data: est } = await db.from('establishments').select('fiscal_enabled, fiscal_emit_on, fiscal_env').eq('id', estId).maybeSingle();
++    return {
++      enabled: Boolean(est?.fiscal_enabled), emit_on: est?.fiscal_emit_on ?? 'entrega', env: est?.fiscal_env ?? null,
++      note: est ? view(await noteRow(estId, orderId)) : null,
++    };
++  }
++
++  async function saveNote(estId, orderId, fields, current) {
++    const row = { ...fields, updated_at: new Date().toISOString() };
++    if (current) {
++      return unwrap(await db.from('fiscal_notes').update(row).eq('id', current.id).select().single());
++    }
++    return unwrap(await db.from('fiscal_notes').insert({ establishment_id: estId, order_id: orderId, ...row }).select().single());
++  }
++
++  function applyResult(r) {
++    if (r.status === 'autorizado') {
++      return {
++        status: 'autorizada', numero: r.numero, serie: r.serie, chave: r.chave, danfe_url: r.danfe, xml_url: r.xml,
++        qrcode_url: r.qrcode, consulta_url: r.consulta, sefaz_status: r.sefazStatus, message: r.message || 'Autorizada',
++        authorized_at: new Date().toISOString(),
++      };
++    }
++    if (r.status === 'processando_autorizacao') return { status: 'processando', message: 'Aguardando a SEFAZ…' };
++    return { status: 'erro', sefaz_status: r.sefazStatus, message: r.message || 'Nota rejeitada.' };
++  }
++
++  /**
++   * Emite a nota do pedido. Seguro para chamar mais de uma vez: se já está
++   * autorizada (ou em processamento) não emite de novo.
++   * @returns a nota (formato de view) ou null se a loja não emite nota.
++   */
++  async function emitForOrder(estId, orderId, { force = false } = {}) {
++    const est = await loadEst(estId);
++    if (!est.fiscal_enabled) {
++      if (force) throw new AppError(409, 'FISCAL_DESLIGADO', 'A emissão de nota fiscal está desligada nesta loja (Atendimento > Nota fiscal).');
++      return null;
++    }
++    const current = await noteRow(estId, orderId);
++    if (current && ['autorizada', 'processando', 'cancelada'].includes(current.status)) return view(current);
++
++    const { data: order, error } = await db.from('orders').select('*, items:order_items(*)')
++      .eq('id', orderId).eq('establishment_id', estId).maybeSingle();
++    if (error) unwrap({ error });
++    if (!order) throw new AppError(404, 'PEDIDO_NAO_ENCONTRADO', 'Pedido não encontrado.');
++    if (order.status === 'cancelado') throw new AppError(409, 'PEDIDO_CANCELADO', 'Pedido cancelado não recebe nota fiscal.');
++
++    const attempt = (current?.attempts ?? 0) + 1;
++    const ref = `pedido-${order.id}-${attempt}`; // única na conta Focus (vale para todas as lojas)
++    const base = { env: est.fiscal_env, ref, attempts: attempt };
++
++    let payload;
++    try {
++      const ids = order.items.map((i) => i.product_id);
++      const { data: products } = await db.from('products').select('id, ncm, cfop, cest').in('id', ids);
++      payload = buildNfce(est, order, products ?? []);
++    } catch (e) {
++      return view(await saveNote(estId, orderId, { ...base, status: 'erro', message: e.message }, current));
++    }
++    const token = (await tokens(estId))[est.fiscal_env];
++    if (!token) {
++      return view(await saveNote(estId, orderId, { ...base, status: 'erro', message: 'A loja ainda não concluiu o cadastro fiscal (certificado/CSC) na Focus NFe.' }, current));
++    }
++
++    let note = await saveNote(estId, orderId, { ...base, status: 'processando', message: 'Enviando para a SEFAZ…' }, current);
++    try {
++      const r = await focus.emitNfce(est.fiscal_env, token, ref, payload);
++      note = await saveNote(estId, orderId, applyResult(r), note);
++    } catch (e) {
++      note = await saveNote(estId, orderId, { status: 'erro', message: e.message }, note);
++    }
++    if (note.status === 'erro') log.warn?.(`[nota] pedido #${order.code} (${est.slug}): ${note.message}`);
++    return view(note);
++  }
++
++  /** Dispara a emissão sem segurar a resposta da tela (erros ficam registrados na nota). */
++  function emitInBackground(estId, orderId) {
++    setImmediate(() => {
++      emitForOrder(estId, orderId).catch((e) => log.error?.(`[nota] ${e.message}`));
++    });
++  }
++
++  /** Chamado quando um pedido muda de situação. */
++  async function onOrderStatus(estId, order) {
++    const { data: est } = await db.from('establishments').select('fiscal_enabled, fiscal_emit_on').eq('id', estId).maybeSingle();
++    if (!est?.fiscal_enabled) return;
++    if (order.status === 'entregue' && est.fiscal_emit_on === 'entrega') emitInBackground(estId, order.id);
++    if (order.status === 'cancelado') {
++      const n = await noteRow(estId, order.id);
++      if (n?.status === 'autorizada') cancelForOrder(estId, order.id, 'Pedido cancelado pela loja').catch((e) => log.error?.(`[nota] ${e.message}`));
++    }
++  }
++
++  /** Chamado logo depois que o cliente confirma a encomenda. */
++  async function onOrderCreated(estId, order) {
++    const { data: est } = await db.from('establishments').select('fiscal_enabled, fiscal_emit_on').eq('id', estId).maybeSingle();
++    if (est?.fiscal_enabled && est.fiscal_emit_on === 'pedido') emitInBackground(estId, order.id);
++  }
++
++  async function cancelForOrder(estId, orderId, justificativa) {
++    const est = await loadEst(estId);
++    const n = await noteRow(estId, orderId);
++    if (!n || n.status !== 'autorizada') throw new AppError(409, 'NOTA_NAO_AUTORIZADA', 'Não há nota autorizada para cancelar.');
++    const token = (await tokens(estId))[n.env];
++    const motivo = String(justificativa || '').trim().padEnd(15, '.').slice(0, 255);
++    let r;
++    try {
++      r = await focus.cancelNfce(n.env, token, n.ref, motivo);
++    } catch (e) {
++      return view(await saveNote(estId, orderId, { message: `Cancelamento não enviado: ${e.message}` }, n));
++    }
++    if (r.status === 'cancelado') {
++      return view(await saveNote(estId, orderId, { status: 'cancelada', cancelled_at: new Date().toISOString(), message: r.message || 'Cancelada' }, n));
++    }
++    log.warn?.(`[nota] cancelamento negado (${est.slug}): ${r.message}`);
++    return view(await saveNote(estId, orderId, {
++      status: 'cancelamento_negado',
++      message: `Cancelamento negado: ${r.message || 'prazo de 30 minutos encerrado'}. Fale com o contador.`,
++    }, n));
++  }
++
++  /** Rotina: consulta notas que ficaram "processando" na SEFAZ. */
++  async function sweep() {
++    const { data } = await db.from('fiscal_notes').select('*').eq('status', 'processando').limit(50);
++    let updated = 0;
++    for (const n of data ?? []) {
++      if (Date.now() - new Date(n.updated_at).getTime() < 60_000) continue;
++      try {
++        const token = (await tokens(n.establishment_id))[n.env];
++        const r = await focus.getNfce(n.env, token, n.ref);
++        if (r.status && r.status !== 'processando_autorizacao') {
++          await saveNote(n.establishment_id, n.order_id, applyResult(r), n);
++          updated++;
++        }
++      } catch (e) { log.error?.(`[nota] rotina: ${e.message}`); }
++    }
++    return { updated };
++  }
++
++  /** Notas de vários pedidos (para marcar os cartões do atendimento). */
++  async function statusByOrders(estId, orderIds) {
++    if (!orderIds.length) return {};
++    const { data } = await db.from('fiscal_notes').select('order_id, status, numero').eq('establishment_id', estId).in('order_id', orderIds);
++    return Object.fromEntries((data ?? []).map((n) => [n.order_id, { status: n.status, numero: n.numero }]));
++  }
++
++  /** Para o cliente: link da nota autorizada no acompanhamento. */
++  async function publicNote(estId, orderId) {
++    const n = await noteRow(estId, orderId).catch(() => null);
++    if (!n || n.status !== 'autorizada') return null;
++    return { numero: n.numero, danfe_url: focus.absolute(n.env, n.danfe_url), consulta_url: n.consulta_url, qrcode_url: n.qrcode_url, env: n.env };
++  }
++
++  return {
++    getConfig, saveConfig, syncCompany, emitForOrder, emitInBackground, cancelForOrder,
++    onOrderStatus, onOrderCreated, noteFor, orderFiscal, statusByOrders, publicNote, sweep,
++  };
++}
+diff --git a/backend/test/fiscal.test.js b/backend/test/fiscal.test.js
+new file mode 100755
+index 0000000..1c5e87e
+--- /dev/null
++++ b/backend/test/fiscal.test.js
+@@ -0,0 +1,53 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { buildNfce, isoWithOffset } from '../src/services/fiscal.service.js';
++
++const est = {
++  doc_type: 'cnpj', doc_number: '11222333000181', timezone: 'America/Sao_Paulo', regime_tributario: 1,
++  fiscal_cfop: '5101', fiscal_csosn: '102', fiscal_pis_cst: '49', fiscal_cofins_cst: '49',
++  fiscal_ncm_default: null, fiscal_payment_form: '01', fiscal_ibs_cbs: false,
++};
++const order = {
++  code: 1081, fulfillment: 'retirada', total_cents: 4790, customer_name: 'Maria da Silva', customer_cpf: null,
++  items: [
++    { product_id: 1, product_name: 'Bolo de cenoura', unit_label: 'un', unit_price_cents: 3990, quantity: 1 },
++    { product_id: 2, product_name: 'Pão de queijo', unit_label: 'cento', unit_price_cents: 400, quantity: 2 },
++  ],
++};
++const products = [{ id: 1, ncm: '19059090', cfop: null, cest: null }, { id: 2, ncm: '19059090', cfop: '5102', cest: '1706400' }];
++
++test('data de emissão com o fuso da loja', () => {
++  assert.equal(isoWithOffset(new Date('2026-11-23T17:55:10Z'), 'America/Sao_Paulo'), '2026-11-23T14:55:10-03:00');
++  assert.equal(isoWithOffset(new Date('2026-11-23T17:55:10Z'), 'UTC'), '2026-11-23T17:55:10+00:00');
++});
++
++test('monta a NFC-e com itens, CFOP do produto/loja, pagamento e Simples', () => {
++  const n = buildNfce(est, order, products, new Date('2026-11-23T17:55:10Z'));
++  assert.equal(n.cnpj_emitente, '11222333000181');
++  assert.equal(n.presenca_comprador, '1');
++  assert.equal(n.items.length, 2);
++  assert.equal(n.items[0].cfop, '5101');
++  assert.equal(n.items[1].cfop, '5102');
++  assert.equal(n.items[1].cest, '1706400');
++  assert.equal(n.items[1].unidade_comercial, 'CENTO');
++  assert.equal(n.items[1].valor_bruto, '8.00');
++  assert.equal(n.items[0].icms_situacao_tributaria, '102');
++  assert.deepEqual(n.formas_pagamento, [{ forma_pagamento: '01', valor_pagamento: '47.90' }]);
++  assert.equal(n.cpf_destinatario, undefined);
++  assert.match(n.informacoes_adicionais_contribuinte, /Pedido #1081/);
++});
++
++test('CPF na nota, entrega e IBS/CBS opcionais', () => {
++  const n = buildNfce({ ...est, fiscal_ibs_cbs: true, fiscal_ibs_cbs_cst: '000', fiscal_cclasstrib: '000001' },
++    { ...order, fulfillment: 'entrega', customer_cpf: '52998224725' }, products);
++  assert.equal(n.presenca_comprador, '4');
++  assert.equal(n.cpf_destinatario, '52998224725');
++  assert.equal(n.items[0].cbs_aliquota, '0.90');
++  assert.equal(n.items[0].ibs_cbs_base_calculo, '39.90');
++});
++
++test('sem NCM ou sem CNPJ: erro claro, nada é enviado', () => {
++  assert.throws(() => buildNfce(est, order, [{ id: 1 }, { id: 2 }]), /NCM do produto "Bolo de cenoura"/);
++  assert.equal(buildNfce({ ...est, fiscal_ncm_default: '19059090' }, order, [{ id: 1 }, { id: 2 }]).items[0].codigo_ncm, '19059090');
++  assert.throws(() => buildNfce({ ...est, doc_type: 'cpf' }, order, products), /CNPJ/);
++});
+diff --git a/supabase/migrations/008_notas_fiscais.sql b/supabase/migrations/008_notas_fiscais.sql
+new file mode 100755
+index 0000000..d05ad31
+--- /dev/null
++++ b/supabase/migrations/008_notas_fiscais.sql
+@@ -0,0 +1,142 @@
++-- =====================================================================
++--  Migração 008: NOTA FISCAL (NFC-e) de cada pedido, emitida pela Focus NFe
++--
++--  Rode no SQL Editor do Supabase depois do 007. Pode rodar de novo.
++--
++--  * Cada loja configura os dados fiscais (Atendimento > Nota fiscal):
++--    inscrição estadual, regime, endereço completo, CSC e certificado A1.
++--  * Cada produto pode ter NCM, CFOP e CEST (o contador informa).
++--  * O cliente pode informar "CPF na nota".
++--  * A nota é emitida automaticamente quando o pedido é marcado como
++--    ENTREGUE/RETIRADO (a loja pode trocar para "ao confirmar a encomenda"
++--    ou "só manual") e fica registrada em fiscal_notes.
++-- =====================================================================
++
++-- ---------------------------------------------------------------------
++-- 1. Dados fiscais da loja
++-- ---------------------------------------------------------------------
++alter table public.establishments
++  add column if not exists fiscal_enabled        boolean not null default false,
++  add column if not exists fiscal_env            text    not null default 'homologacao',
++  add column if not exists fiscal_emit_on        text    not null default 'entrega',
++  add column if not exists inscricao_estadual    text,
++  add column if not exists regime_tributario     smallint not null default 1,  -- 1 Simples, 2 Simples excesso, 3 Normal, 4 MEI
++  add column if not exists razao_social          text,
++  add column if not exists addr_street           text,
++  add column if not exists addr_number           text,
++  add column if not exists addr_district         text,
++  add column if not exists addr_city             text,
++  add column if not exists addr_uf               text,
++  add column if not exists addr_zip              text,
++  add column if not exists fiscal_cfop           text not null default '5101',  -- produção própria
++  add column if not exists fiscal_csosn          text not null default '102',   -- Simples sem crédito
++  add column if not exists fiscal_pis_cst        text not null default '49',
++  add column if not exists fiscal_cofins_cst     text not null default '49',
++  add column if not exists fiscal_ncm_default    text,
++  add column if not exists fiscal_payment_form   text not null default '01',    -- 01 dinheiro
++  add column if not exists fiscal_ibs_cbs        boolean not null default false,
++  add column if not exists fiscal_ibs_cbs_cst    text,
++  add column if not exists fiscal_cclasstrib     text,
++  add column if not exists focus_company_id      text,
++  add column if not exists fiscal_cert_valid_until timestamptz;
++
++do $$ begin
++  if not exists (select 1 from pg_constraint where conname = 'establishments_fiscal_env_chk') then
++    alter table public.establishments add constraint establishments_fiscal_env_chk
++      check (fiscal_env in ('homologacao','producao'));
++  end if;
++  if not exists (select 1 from pg_constraint where conname = 'establishments_fiscal_emit_on_chk') then
++    alter table public.establishments add constraint establishments_fiscal_emit_on_chk
++      check (fiscal_emit_on in ('pedido','entrega','manual'));
++  end if;
++  if not exists (select 1 from pg_constraint where conname = 'establishments_regime_chk') then
++    alter table public.establishments add constraint establishments_regime_chk
++      check (regime_tributario between 1 and 4);
++  end if;
++end $$;
++
++-- Tokens da Focus NFe de cada loja: só o back-end lê
++create table if not exists public.fiscal_secrets (
++  establishment_id        uuid primary key references public.establishments(id) on delete cascade,
++  focus_token_producao    text,
++  focus_token_homologacao text,
++  updated_at              timestamptz not null default now()
++);
++alter table public.fiscal_secrets enable row level security;   -- sem políticas
++revoke all on public.fiscal_secrets from anon, authenticated;
++grant all on public.fiscal_secrets to service_role;
++
++-- ---------------------------------------------------------------------
++-- 2. Dados fiscais dos produtos e CPF na nota
++-- ---------------------------------------------------------------------
++alter table public.products
++  add column if not exists ncm  text,
++  add column if not exists cfop text,
++  add column if not exists cest text;
++
++do $$ begin
++  if not exists (select 1 from pg_constraint where conname = 'products_ncm_chk') then
++    alter table public.products add constraint products_ncm_chk check (ncm is null or ncm ~ '^\d{8}$');
++  end if;
++  if not exists (select 1 from pg_constraint where conname = 'products_cfop_chk') then
++    alter table public.products add constraint products_cfop_chk check (cfop is null or cfop ~ '^\d{4}$');
++  end if;
++  if not exists (select 1 from pg_constraint where conname = 'products_cest_chk') then
++    alter table public.products add constraint products_cest_chk check (cest is null or cest ~ '^\d{7}$');
++  end if;
++end $$;
++
++alter table public.orders add column if not exists customer_cpf text;
++do $$ begin
++  if not exists (select 1 from pg_constraint where conname = 'orders_customer_cpf_chk') then
++    alter table public.orders add constraint orders_customer_cpf_chk check (customer_cpf is null or customer_cpf ~ '^\d{11}$');
++  end if;
++end $$;
++
++-- ---------------------------------------------------------------------
++-- 3. Notas emitidas (uma por pedido)
++--    status: pendente | processando | autorizada | erro | cancelada | cancelamento_negado
++-- ---------------------------------------------------------------------
++create table if not exists public.fiscal_notes (
++  id               bigint generated always as identity primary key,
++  establishment_id uuid not null references public.establishments(id) on delete cascade,
++  order_id         uuid not null unique references public.orders(id) on delete cascade,
++  ref              text not null unique,             -- referência enviada à Focus
++  env              text not null,                    -- homologacao | producao
++  status           text not null default 'pendente',
++  numero           text,
++  serie            text,
++  chave            text,
++  danfe_url        text,
++  xml_url          text,
++  qrcode_url       text,
++  consulta_url     text,
++  sefaz_status     text,
++  message          text,
++  attempts         integer not null default 0,
++  authorized_at    timestamptz,
++  cancelled_at     timestamptz,
++  created_at       timestamptz not null default now(),
++  updated_at       timestamptz not null default now(),
++  constraint fiscal_notes_status_chk check (status in ('pendente','processando','autorizada','erro','cancelada','cancelamento_negado'))
++);
++create index if not exists fiscal_notes_est_idx on public.fiscal_notes (establishment_id, created_at desc);
++
++alter table public.fiscal_notes enable row level security;
++drop policy if exists fiscal_notes_staff_read on public.fiscal_notes;
++create policy fiscal_notes_staff_read on public.fiscal_notes for select to authenticated
++  using (establishment_id = public.staff_establishment());
++grant select on public.fiscal_notes to authenticated;
++grant all on public.fiscal_notes to service_role;
++
++-- O atendimento recebe a mudança da nota em tempo real
++do $$ begin
++  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'fiscal_notes') then
++    if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
++      alter publication supabase_realtime add table public.fiscal_notes;
++    end if;
++  end if;
++end $$;
++
++-- Conferência
++select name as loja, fiscal_enabled as nota_ligada, fiscal_env as ambiente from public.establishments order by created_at;

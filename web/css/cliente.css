@@ -5,14 +5,16 @@
 .topbar { background: var(--surface); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 30; }
 .topbar-in { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 68px; }
 .brand { display: flex; align-items: center; gap: 12px; color: var(--ink); text-decoration: none; }
-.brand-mark { width: 40px; height: 40px; border-radius: 12px; background: var(--brand); color: #fff; display: grid; place-items: center; }
+.brand-mark { width: 40px; height: 40px; border-radius: 12px; background: var(--brand); color: var(--brand-ink); display: grid; place-items: center; }
 .brand-mark svg { width: 22px; height: 22px; }
+/* logo da padaria (quando a loja enviou uma) */
+.brand-logo { height: 46px; width: auto; max-width: 180px; object-fit: contain; flex: none; }
 .brand-text { display: flex; flex-direction: column; line-height: 1.15; }
 .brand-text strong { font-family: var(--serif); font-size: 20px; }
 .brand-text small { font-size: 12px; color: var(--ink-2); }
 .btn.pill { border-radius: 999px; }
 .back-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; border: 0; background: none; font-weight: 600; cursor: pointer; padding: 0; }
-.linklike { border: 0; background: none; padding: 0; color: var(--brand-hover); font-weight: 600; font-size: .9rem; cursor: pointer; }
+.linklike { border: 0; background: none; padding: 0; color: var(--brand-text); font-weight: 600; font-size: .9rem; cursor: pointer; }
 
 /* Faixa de boas-vindas */
 .hero { background: var(--surface-2); }
@@ -22,10 +24,10 @@
 .hero p { margin: 0; font-size: 17px; color: var(--ink-3); }
 .hero-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .pill-info { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: var(--surface); font-size: 14px; font-weight: 600; }
-.pill-info svg { color: var(--brand); }
+.pill-info svg { color: var(--brand-text); }
 .how { list-style: none; margin: 0; padding: 0; display: flex; gap: 10px; flex-wrap: wrap; }
 .how li { display: flex; align-items: center; gap: 10px; background: var(--surface); border-radius: 14px; padding: 12px 16px; font-size: 14px; font-weight: 600; }
-.how li span { width: 28px; height: 28px; border-radius: 50%; background: var(--ink); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 14px; }
+.how li span { width: 28px; height: 28px; border-radius: 50%; background: var(--brand-2, var(--ink)); color: var(--brand-2-ink, #fff); display: grid; place-items: center; font-weight: 700; font-size: 14px; }
 
 /* Layout */
 .layout { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; padding: 24px 0 110px; }
@@ -51,7 +53,7 @@
 .p-foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 6px; }
 .price { font-size: 17px; font-weight: 700; }
 .price small { font-size: 13px; font-weight: 500; color: var(--ink-2); }
-.add-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 16px; border-radius: 999px; border: 0; background: var(--brand); color: #fff; font-weight: 700; font-size: 14px; cursor: pointer; }
+.add-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 16px; border-radius: 999px; border: 0; background: var(--brand); color: var(--brand-ink); font-weight: 700; font-size: 14px; cursor: pointer; }
 .add-btn:hover { background: var(--brand-hover); }
 .stepper-qty { display: flex; align-items: center; border-radius: 999px; background: var(--ink); color: #fff; }
 .stepper-qty button { width: 40px; height: 40px; border: 0; background: transparent; color: #fff; font-size: 20px; cursor: pointer; border-radius: 999px; }
@@ -73,7 +75,7 @@
 .cart-item .line { font-size: 13px; color: var(--ink-2); }
 .cart-item .sub { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cart-item .actions { display: flex; gap: 14px; }
-.cart-item .actions button { border: 0; background: none; padding: 0; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--brand-hover); }
+.cart-item .actions button { border: 0; background: none; padding: 0; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--brand-text); }
 .cart-item .actions .rm { color: var(--danger-ink); }
 .cart-item input.item-note { min-height: 38px; font-size: 14px; }
 .cart-empty { margin: 0; padding: 18px; text-align: center; font-size: 14px; color: var(--ink-2); background: var(--surface-3); border-radius: 12px; }
@@ -121,7 +123,7 @@
 .option-card strong { display: flex; align-items: center; gap: 8px; font-size: 16px; }
 .option-card small { font-size: 14px; color: var(--ink-2); }
 .option-card:has(input:checked) { border: 2px solid var(--brand); background: var(--brand-soft); padding: 15px; }
-.option-card:has(input:checked) strong svg { color: var(--brand); }
+.option-card:has(input:checked) strong svg { color: var(--brand-text); }
 
 .days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
 @media (max-width: 640px) { .days { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
@@ -133,7 +135,7 @@
 .day .dd { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .day .sub { font-size: 12px; }
 .day:hover:not(:disabled) { border-color: var(--brand); }
-.day[aria-checked="true"] { background: var(--brand); border: 2px solid var(--brand); color: #fff; padding: 11px 3px; }
+.day[aria-checked="true"] { background: var(--brand); border: 2px solid var(--brand); color: var(--brand-ink); padding: 11px 3px; }
 .day:disabled { background: #EEF1F0; color: var(--muted); cursor: not-allowed; }
 .other-date { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .other-date input { width: auto; }
@@ -148,7 +150,7 @@
 .slot .r { font-size: 13px; font-weight: 600; color: var(--ok-ink); }
 .slot:hover:not(:disabled) { border-color: var(--brand); }
 .slot[aria-checked="true"] { border: 2px solid var(--brand); background: var(--brand-soft); padding: 13px 15px; }
-.slot[aria-checked="true"] .r { color: var(--brand-hover); }
+.slot[aria-checked="true"] .r { color: var(--brand-text); }
 .slot:disabled { background: #EEF1F0; color: var(--muted); cursor: not-allowed; }
 .slot:disabled .r { color: var(--muted); }
 
@@ -157,7 +159,7 @@
 .summary-items .n { color: var(--ink-3); }
 .summary-when { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 14px; background: var(--surface-2); font-size: 14px; font-weight: 600; }
 .summary-when span { display: flex; align-items: center; gap: 10px; }
-.summary-when svg { color: var(--brand); }
+.summary-when svg { color: var(--brand-text); }
 .summary-when .pending { color: var(--ink-2); font-weight: 500; }
 
 /* Sucesso */
@@ -165,7 +167,7 @@
 .success h2 { font-size: 30px; margin-bottom: 8px; }
 .success-icon { width: 68px; height: 68px; margin: 0 auto 14px; border-radius: 50%; display: grid; place-items: center; background: var(--ok-soft); color: var(--ok); }
 .success-icon svg { width: 34px; height: 34px; stroke-width: 3; }
-.order-code { font: 700 52px var(--serif); color: var(--brand); margin: 0 0 12px; }
+.order-code { font: 700 52px var(--serif); color: var(--brand-text); margin: 0 0 12px; }
 .success-summary { text-align: left; background: var(--surface-3); border-radius: 14px; padding: 14px 18px; margin: 12px 0; font-size: 15px; }
 .success-summary ul { padding-left: 18px; margin: 6px 0; }
 .actions-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }

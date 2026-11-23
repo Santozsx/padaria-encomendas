@@ -6,8 +6,20 @@ import { licenseInfo } from '../lib/license.js';
 
 const TTL_MS = 30_000;
 const BASE_FIELDS = 'id, slug, name, doc_type, doc_number, address, phone, timezone, min_lead_days, max_lead_days, max_items_per_order, active';
-const FIELDS = `${BASE_FIELDS}, `
-  + 'license_mode, trial_ends_at, paid_until, billing_email, asaas_customer_id, asaas_subscription_id, subscription_status, custom_price_cents';
+// Colunas que vêm de migrações opcionais. Se o banco ainda não tem uma delas,
+// o sistema continua funcionando sem aquele grupo (e avisa no log).
+const OPTIONAL_GROUPS = [
+  {
+    key: 'license',
+    fields: ['license_mode', 'trial_ends_at', 'paid_until', 'billing_email', 'asaas_customer_id', 'asaas_subscription_id', 'subscription_status', 'custom_price_cents'],
+    warn: '[licenças] Rode supabase/migrations/007_licencas.sql no Supabase. Até lá, todas as lojas ficam liberadas.',
+  },
+  {
+    key: 'brand',
+    fields: ['brand_color', 'brand_color_2', 'logo_updated_at'],
+    warn: '[aparência] Rode supabase/migrations/009_identidade_visual.sql no Supabase. Até lá, as lojas ficam com o visual padrão.',
+  },
+];
 const DEFAULT_PLAN = { name: 'Plano Padaria', price_cents: 9990, trial_days: 14, grace_days: 3 };
 
 function shape(row) {
@@ -34,6 +46,10 @@ function shape(row) {
     asaasSubscriptionId: row.asaas_subscription_id ?? null,
     subscriptionStatus: row.subscription_status ?? 'sem_assinatura',
     customPriceCents: row.custom_price_cents ?? null,
+    // identidade visual
+    brandColor: row.brand_color ?? null,
+    brandColor2: row.brand_color_2 ?? null,
+    logoUpdatedAt: row.logo_updated_at ?? null,
   };
 }
 
@@ -49,19 +65,29 @@ export function createSettingsService(db) {
   }
   const fresh = (e) => e && Date.now() - e.at < TTL_MS;
   let planCache = null;
-  let legacy = false; // banco ainda sem a migração 007 (licenças)
+  const enabled = new Set(OPTIONAL_GROUPS.map((g) => g.key)); // grupos que o banco aceita
+  const selectList = () => [BASE_FIELDS, ...OPTIONAL_GROUPS.filter((g) => enabled.has(g.key)).map((g) => g.fields.join(', '))].join(', ');
+  const missingColumn = (error) => error && (error.code === '42703' || /does not exist|could not find/i.test(error.message || ''));
 
-  /** Lê a loja; se o banco ainda não tem as colunas de licença, funciona como antes. */
+  /** Lê a loja; se o banco ainda não tem colunas de uma migração, funciona sem elas. */
   async function fetchOne(col, value) {
-    let { data, error } = await db.from('establishments').select(legacy ? BASE_FIELDS : FIELDS).eq(col, value).maybeSingle();
-    if (error && !legacy && (error.code === '42703' || /license_mode|does not exist/.test(error.message || ''))) {
-      legacy = true;
-      console.warn('[licenças] Rode supabase/migrations/007_licencas.sql no Supabase. Até lá, todas as lojas ficam liberadas.');
-      ({ data, error } = await db.from('establishments').select(BASE_FIELDS).eq(col, value).maybeSingle());
+    for (;;) {
+      const { data, error } = await db.from('establishments').select(selectList()).eq(col, value).maybeSingle();
+      if (missingColumn(error) && enabled.size) {
+        // descobre qual grupo falta pelo nome da coluna na mensagem de erro
+        const msg = error.message || '';
+        const group = OPTIONAL_GROUPS.find((g) => enabled.has(g.key) && g.fields.some((f) => msg.includes(f)))
+          ?? [...OPTIONAL_GROUPS].reverse().find((g) => enabled.has(g.key));
+        enabled.delete(group.key);
+        console.warn(group.warn);
+        continue;
+      }
+      if (error) unwrap({ error });
+      return data;
     }
-    if (error) unwrap({ error });
-    return data;
   }
+  /** O banco já tem as colunas de identidade visual? */
+  const brandingReady = () => enabled.has('brand');
 
   /** O plano único do SaaS (preço, dias de teste e de tolerância). */
   async function plan() {
@@ -116,5 +142,5 @@ export function createSettingsService(db) {
   }
   function invalidatePlan() { planCache = null; }
 
-  return { get, getBySlug, invalidate, plan, license, invalidatePlan };
+  return { get, getBySlug, invalidate, plan, license, invalidatePlan, brandingReady };
 }

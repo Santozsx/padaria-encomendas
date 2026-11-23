@@ -3,7 +3,10 @@ import {
   api, money, esc, toast, dateBr, timeBr, phoneBr, statusBadge, confirmDialog, debounce,
   STATUS, ITEM_STATUS, icon, hydrateIcons, norm, CATEGORY_TILES,
   licenseBadge, licenseText, dateFull,
+  applyBrand, applyCachedBrand,
+  setupSidebar,
 } from './common.js';
+import { mountBrandForm } from './brand-form.js';
 import { createSupabase, watchOrders, beep } from './realtime.js';
 
 const $ = (s, root = document) => root.querySelector(s);
@@ -152,6 +155,8 @@ async function enterApp() {
   } catch { /* sem horários: a lista mostra só a data */ }
   $('#store-name').textContent = est.name;
   document.title = `Atendimento — ${est.name}`;
+  setBrand(est.brand);
+  $('#brand-open-store').href = `/loja/${est.slug}`;
   $('#store-link').value = `/loja/${est.slug}`;
   $('#store-link').dataset.url = `${location.origin}/loja/${est.slug}`;
   $('#store-link-open').href = `/loja/${est.slug}`;
@@ -196,6 +201,27 @@ async function enterApp() {
   setInterval(() => { tickClock(); if (state.tab === 'orders') renderOrders(); }, 60_000);
 }
 
+// ============================================================ aparência (cores + logo)
+/** Aplica as cores da loja e troca o ícone do menu pela logo. */
+function setBrand(brand) {
+  state.brand = brand || null;
+  applyBrand(brand, { remember: true });
+  const box = $('.side-logo');
+  box.innerHTML = brand?.logo_url
+    ? `<span class="logo-tile"><img src="${esc(brand.logo_url)}" alt="${esc(state.config.storeName)}"></span>`
+    : `<span class="logo-mark">${icon('bread', { size: 22 })}</span>`;
+}
+
+function loadBrandForm() {
+  state.brandMounted = true;
+  mountBrandForm($('#brand-body'), {
+    storeName: state.config.storeName,
+    load: () => staffApi('/branding'),
+    save: (body) => staffApi('/branding', { method: 'PUT', body }),
+    onSaved: (brand) => setBrand(brand),
+  });
+}
+
 function tickClock() {
   const opts = (o) => new Intl.DateTimeFormat('pt-BR', { timeZone: state.config.timezone, ...o }).format(new Date());
   $('#now-label').textContent = `${opts({ weekday: 'long' })} · ${opts({ day: '2-digit', month: '2-digit' })} · ${opts({ hour: '2-digit', minute: '2-digit' })}`;
@@ -203,7 +229,7 @@ function tickClock() {
 
 // ============================================================ navegação
 function showTab(tab) {
-  if (['sales', 'team', 'billing'].includes(tab) && !state.isAdmin) tab = 'orders'; // só administradores
+  if (['sales', 'team', 'billing', 'brand'].includes(tab) && !state.isAdmin) tab = 'orders'; // só administradores
   if (state.locked && tab !== 'billing') {
     toast('A licença venceu. Renove a assinatura para liberar o sistema.', 'error');
     tab = 'billing';
@@ -221,6 +247,7 @@ function refreshVisible() {
   if (state.tab === 'products') loadProducts();
   if (state.tab === 'team') loadTeam();
   if (state.tab === 'billing') loadBilling();
+  if (state.tab === 'brand' && !state.brandMounted) loadBrandForm();
   if (state.openOrderId) openOrder(state.openOrderId, { silent: true });
 }
 
@@ -1212,6 +1239,8 @@ function bindEvents() {
 
 // ============================================================ início
 async function init() {
+  setupSidebar();
+  applyCachedBrand(); // cores da última loja usada neste aparelho, até o login confirmar
   hydrateIcons();
   bindEvents();
   try {

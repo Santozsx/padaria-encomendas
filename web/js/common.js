@@ -171,6 +171,9 @@ const ICONS = {
   lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   external: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
   building: '<path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16M15 9h4a1 1 0 0 1 1 1v11M3 21h18M8 8h3M8 12h3M8 16h3"/>',
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  palette: '<path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.8 1.6-1.6 0-.5-.2-.8-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-4-4-7.4-9-7.4z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="14.5" cy="7" r="1"/>',
+  image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>',
 };
 export function icon(name, { size = 18, stroke = 1.9, cls = '' } = {}) {
   return `<svg class="icon ${cls}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
@@ -216,3 +219,73 @@ export function licenseText(lic) {
   }
 }
 export { dmy as dateFull };
+
+// ---------- Identidade visual da loja (cores + logo) ----------
+// O servidor calcula a paleta (com contraste garantido); aqui só aplicamos.
+const BRAND_CACHE = 'padaria-brand';
+
+/** Aplica as cores da loja na página (ou volta ao padrão se brand for vazio). */
+export function applyBrand(brand, { remember = false } = {}) {
+  const root = document.documentElement;
+  for (const k of (root.dataset.brandVars || '').split(',').filter(Boolean)) root.style.removeProperty(k);
+  delete root.dataset.side;
+  root.dataset.brandVars = '';
+  if (brand?.vars) {
+    for (const [k, v] of Object.entries(brand.vars)) root.style.setProperty(k, v);
+    root.dataset.brandVars = Object.keys(brand.vars).join(',');
+    if (brand.side_tone) root.dataset.side = brand.side_tone;
+  }
+  const theme = document.querySelector('meta[name="theme-color"]');
+  if (theme) theme.content = brand?.theme_color || '#0E6E63';
+  setFavicon(brand?.logo_url || null);
+  if (remember) {
+    try { localStorage.setItem(BRAND_CACHE, JSON.stringify(brand || null)); } catch { /* sem armazenamento */ }
+  }
+}
+
+/** Aplica a última marca usada neste aparelho (evita "piscar" o visual padrão). */
+export function applyCachedBrand() {
+  try {
+    const b = JSON.parse(localStorage.getItem(BRAND_CACHE) || 'null');
+    if (b) applyBrand(b);
+    return b;
+  } catch { return null; }
+}
+
+/** Ícone da aba do navegador: a logo da loja (ou o padrão). */
+export function setFavicon(url) {
+  let link = document.querySelector('link[rel="icon"]');
+  if (!link) { link = document.createElement('link'); link.rel = 'icon'; document.head.append(link); }
+  if (url) { link.removeAttribute('type'); link.href = url; } else { link.type = 'image/svg+xml'; link.href = '/favicon.svg'; }
+}
+
+/** Troca o "quadradinho com pão" pela logo da loja (se houver). */
+export function placeLogo(el, brand, { tile = false, alt = '' } = {}) {
+  if (!el) return;
+  if (!brand?.logo_url) return;
+  const img = `<img src="${esc(brand.logo_url)}" alt="${esc(alt)}">`;
+  const node = document.createElement('span');
+  node.className = tile ? 'logo-tile' : 'brand-logo-wrap';
+  node.innerHTML = img;
+  if (!tile) { node.firstChild.className = 'brand-logo'; el.replaceWith(node.firstChild); return; }
+  el.replaceWith(node);
+}
+
+// ---------- Menu lateral recolhível ----------
+/** O ☰ abre/fecha o menu (celular e tablet); com mouse, abre ao passar por cima. */
+export function setupSidebar(root = document) {
+  const side = root.querySelector('.sidebar');
+  const btn = root.querySelector('[data-side-toggle]');
+  if (!side || !btn) return;
+  const set = (open) => {
+    side.classList.toggle('open', open);
+    btn.setAttribute('aria-expanded', String(open));
+  };
+  btn.addEventListener('click', () => set(!side.classList.contains('open')));
+  // escolheu uma opção ou clicou fora: fecha
+  side.addEventListener('click', (e) => { if (e.target.closest('.nav-item')) set(false); });
+  document.addEventListener('click', (e) => { if (side.classList.contains('open') && !side.contains(e.target)) set(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && side.classList.contains('open')) set(false); });
+  // tirou o mouse depois de abrir pelo ☰: fecha também
+  side.addEventListener('mouseleave', () => set(false));
+}

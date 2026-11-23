@@ -17,7 +17,9 @@ import {
   TeamPasswordSchema,
   CategoryCreateSchema,
   SubscribeSchema,
+  BrandingSchema,
 } from '../schemas.js';
+import { brandInfo } from '../lib/brand.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -31,7 +33,7 @@ function intParam(value) {
   return n;
 }
 
-export function staffRoutes({ auth, settings, catalog, orders, reports, team, billing }) {
+export function staffRoutes({ auth, settings, catalog, orders, reports, team, billing, branding }) {
   const r = Router();
   // Toda consulta usa SEMPRE a loja de quem está logado (nunca um id vindo do navegador)
   const est = (req) => req.staff.establishment_id;
@@ -63,9 +65,19 @@ export function staffRoutes({ auth, settings, catalog, orders, reports, team, bi
       establishment: {
         id: s.id, slug: s.slug, name: s.name, address: s.address, phone: s.phone, timezone: s.timezone,
         ...deliveryWindow(s),
+        brand: brandInfo(s), // cores + logo da loja (telas aplicam o visual)
       },
       license,
     });
+  }));
+
+  // ----- Aparência da loja: cores e logo (somente administradores) -----
+  r.get('/branding', adminOnly, ah(async (req, res) => {
+    res.json({ ...(await branding.get(est(req))), ready: settings.brandingReady ? settings.brandingReady() : true });
+  }));
+
+  r.put('/branding', adminOnly, ah(async (req, res) => {
+    res.json(await branding.save(est(req), parse(BrandingSchema, req.body)));
   }));
 
   // ----- Assinatura da loja (somente administradores) -----

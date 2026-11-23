@@ -5,7 +5,10 @@ services:
   - type: web
     name: padaria-encomendas
     runtime: node
-    plan: starter            # o plano gratuito "dorme" sem uso: ruim para pedidos e webhooks
+    # free = gratuito para testar: "dorme" após 15 min sem uso e leva ~1 min para acordar.
+    # Com lojas de verdade, troque para starter (sempre ligado) no painel da Render:
+    # serviço > Settings > Instance Type. O link não muda.
+    plan: free
     region: virginia
     buildCommand: cd backend && npm ci --omit=dev
     startCommand: cd backend && npm run start:cloud

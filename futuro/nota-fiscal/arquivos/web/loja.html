@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Encomendas — Padaria</title>
+  <meta name="description" content="Faça sua encomenda de pães, bolos, salgados e doces.">
+  <meta name="theme-color" content="#0E6E63">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/cliente.css">
+</head>
+<body>
+  <!-- ===== Topo ===== -->
+  <header class="topbar">
+    <div class="wrap topbar-in">
+      <button type="button" class="back-link hidden" id="back-to-catalog">
+        <span data-icon="arrowLeft"></span> Voltar<span class="hide-sm"> ao cardápio</span>
+      </button>
+      <a class="brand" href="/" id="brand-link">
+        <span class="brand-mark" data-icon="bread"></span>
+        <span class="brand-text">
+          <strong id="store-name">Padaria</strong>
+          <small>Encomendas online</small>
+        </span>
+      </a>
+      <a class="btn ghost pill" href="#" id="track-link"><span data-icon="clock"></span><span class="hide-sm">Acompanhar pedido</span></a>
+    </div>
+  </header>
+
+  <!-- ===== 1. Catálogo ===== -->
+  <div id="view-catalog">
+    <section class="hero">
+      <div class="wrap hero-in">
+        <div class="hero-text">
+          <h1>Encomende hoje, a gente prepara fresquinho para você.</h1>
+          <p>Pedidos com no mínimo 1 dia de antecedência. Retire na loja ou receba em casa.</p>
+          <div class="hero-pills">
+            <span class="pill-info"><span data-icon="calendar"></span> <span id="next-date">Próxima data disponível</span></span>
+            <span class="pill-info"><span data-icon="clock"></span> <span id="hours-range">Escolha o horário na próxima etapa</span></span>
+          </div>
+        </div>
+        <ol class="how">
+          <li><span>1</span>Escolha os produtos</li>
+          <li><span>2</span>Data e horário</li>
+          <li><span>3</span>Confirme seus dados</li>
+        </ol>
+      </div>
+    </section>
+
+    <main class="wrap layout">
+      <section class="catalog" aria-label="Cardápio">
+        <label class="search">
+          <span data-icon="search"></span>
+          <span class="sr-only">Buscar produto</span>
+          <input type="search" id="search" placeholder="Buscar pão, bolo, salgado…" autocomplete="off">
+        </label>
+        <nav class="chips" id="category-chips" aria-label="Categorias"></nav>
+        <div id="products" aria-live="polite">
+          <div class="skeleton" style="height:130px"></div>
+          <div class="skeleton" style="height:130px;margin-top:12px"></div>
+        </div>
+      </section>
+
+      <aside class="cart card" id="cart" aria-labelledby="cart-title">
+        <div class="cart-head">
+          <h2 id="cart-title">Seu pedido</h2>
+          <span class="muted small" id="cart-count"></span>
+        </div>
+        <ul id="cart-items" class="cart-items"></ul>
+        <p id="cart-empty" class="cart-empty">Seu pedido está vazio. Toque em <strong>Adicionar</strong> nos produtos.</p>
+        <div class="totals">
+          <div class="row"><span>Subtotal</span><span class="num" id="cart-subtotal">R$ 0,00</span></div>
+          <div class="row total"><span>Total</span><strong class="num" id="cart-total">R$ 0,00</strong></div>
+        </div>
+        <button type="button" class="btn primary lg block" id="go-checkout" disabled>
+          Escolher data e horário <span data-icon="arrowRight"></span>
+        </button>
+        <p class="fine">O total é conferido pela padaria quando você confirma o pedido.</p>
+      </aside>
+    </main>
+
+    <!-- barra fixa no celular -->
+    <div class="mobile-bar" id="mobile-bar" hidden>
+      <div>
+        <small id="mobile-count">0 produtos</small>
+        <strong class="num" id="mobile-total">R$ 0,00</strong>
+      </div>
+      <button type="button" class="btn primary" id="mobile-continue">Continuar <span data-icon="arrowRight"></span></button>
+    </div>
+  </div>
+
+  <!-- ===== 2. Data, horário e dados ===== -->
+  <div id="view-checkout" class="hidden">
+    <div class="wrap">
+      <ol class="stepper" aria-label="Etapas">
+        <li class="done"><span>✓</span>Produtos</li>
+        <li class="current"><span>2</span>Data e horário</li>
+        <li><span>3</span>Seus dados</li>
+        <li><span>4</span>Confirmação</li>
+      </ol>
+    </div>
+
+    <main class="wrap layout">
+      <form id="order-form" class="checkout-form" novalidate>
+        <section class="card step-card">
+          <h2>Como você quer receber?</h2>
+          <div class="ful-options" role="radiogroup">
+            <label class="option-card">
+              <input type="radio" name="fulfillment" value="retirada" checked>
+              <span>
+                <strong><span data-icon="store"></span> Retirar na loja</strong>
+                <small id="pickup-address">Sem taxa · você retira no horário escolhido</small>
+              </span>
+            </label>
+            <label class="option-card">
+              <input type="radio" name="fulfillment" value="entrega">
+              <span>
+                <strong><span data-icon="truck"></span> Entrega</strong>
+                <small>Levamos até você no horário escolhido</small>
+              </span>
+            </label>
+          </div>
+          <label class="field hidden" id="address-field">Endereço completo
+            <input name="delivery_address" autocomplete="street-address" maxlength="300" placeholder="Rua, número, complemento, bairro">
+          </label>
+        </section>
+
+        <section class="card step-card">
+          <div class="step-head">
+            <h2>Escolha o dia</h2>
+            <span class="muted small">Encomendas com no mínimo 1 dia de antecedência</span>
+          </div>
+          <div class="days" id="days" role="radiogroup" aria-label="Dia"></div>
+          <div class="other-date">
+            <button type="button" class="btn sm" id="other-date-btn"><span data-icon="calendar"></span> Escolher outra data no calendário</button>
+            <input type="date" id="other-date" class="hidden" aria-label="Outra data">
+          </div>
+        </section>
+
+        <section class="card step-card">
+          <h2 id="slots-title">Horário</h2>
+          <div class="slots" id="slots" role="radiogroup" aria-labelledby="slots-title"></div>
+        </section>
+
+        <section class="card step-card">
+          <h2>Seus dados</h2>
+          <div class="grid-2">
+            <label class="field">Nome
+              <input name="customer_name" autocomplete="name" required minlength="2" maxlength="100">
+            </label>
+            <label class="field">WhatsApp
+              <input name="customer_phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(11) 99999-8888" required>
+              <span class="hint">Avisamos por aqui quando o pedido estiver pronto.</span>
+            </label>
+            <label class="field"><span>CPF na nota <span class="hint">(opcional)</span></span>
+              <input name="customer_cpf" inputmode="numeric" autocomplete="off" maxlength="14" placeholder="000.000.000-00">
+            </label>
+          </div>
+          <label class="field"><span>Observações do pedido <span class="hint">(opcional)</span></span>
+            <textarea name="notes" maxlength="500" placeholder="Ex.: embalar separado, texto do bolo, ponto do pão…"></textarea>
+          </label>
+        </section>
+      </form>
+
+      <aside class="cart card summary" aria-labelledby="summary-title">
+        <div class="cart-head">
+          <h2 id="summary-title">Resumo</h2>
+          <button type="button" class="linklike" id="edit-items">Editar itens</button>
+        </div>
+        <ul class="summary-items" id="summary-items"></ul>
+        <div class="summary-when" id="summary-when"></div>
+        <div class="totals">
+          <div class="row total"><span>Total</span><strong class="num" id="summary-total">R$ 0,00</strong></div>
+        </div>
+        <p class="field-error" id="form-error" role="alert"></p>
+        <button type="submit" form="order-form" class="btn primary lg block" id="submit-btn">
+          <span data-icon="check"></span> Confirmar encomenda
+        </button>
+        <p class="fine">Você recebe o número do pedido na hora para acompanhar o preparo.</p>
+      </aside>
+    </main>
+  </div>
+
+  <!-- ===== 3. Sucesso ===== -->
+  <main class="wrap hidden" id="view-success">
+    <section class="card success">
+      <div class="success-icon" data-icon="check"></div>
+      <h2>Encomenda recebida!</h2>
+      <p class="muted">Número do pedido</p>
+      <p class="order-code num" id="success-code">#0000</p>
+      <div id="success-summary" class="success-summary"></div>
+      <p class="muted small">Guarde este número. Você pode acompanhar o preparo a qualquer momento.</p>
+      <div class="actions-row">
+        <a class="btn" id="success-track" href="#">Acompanhar pedido</a>
+        <button class="btn primary" id="new-order">Fazer outra encomenda</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Loja não encontrada -->
+  <main class="wrap hidden" id="view-notfound">
+    <section class="card success">
+      <div class="success-icon notfound" data-icon="alert"></div>
+      <h2 id="notfound-title">Loja não encontrada</h2>
+      <p class="muted" id="notfound-text">Confira o link que você recebeu do estabelecimento. Se o problema continuar, fale com a loja.</p>
+    </section>
+  </main>
+
+  <footer class="store-footer hidden" id="store-footer">
+    <div class="wrap">
+      <strong id="footer-name"></strong>
+      <span id="footer-address"></span>
+      <span id="footer-phone"></span>
+    </div>
+  </footer>
+
+  <script type="module" src="/js/cliente.js"></script>
+</body>
+</html>

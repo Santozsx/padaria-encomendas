@@ -20,6 +20,9 @@
   --brand-hover: #0A574E;
   --brand-ink: #FFFFFF;
   --brand-soft: #E3F2EF;
+  --brand-raw: #0E6E63;      /* cor exata da loja (faixas) */
+  --brand-text: #0A574E;     /* links e ícones sobre fundo claro */
+  --brand-text-hover: #073F39;
   --ok: #2F7D4A;
   --ok-ink: #22603A;
   --ok-soft: #E1F2E6;
@@ -44,11 +47,11 @@
 html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; font: 16px/1.5 var(--sans); color: var(--ink); background: var(--bg); }
 h1, h2, h3 { font-family: var(--serif); line-height: 1.15; margin: 0; letter-spacing: -.01em; font-weight: 700; }
-a { color: var(--brand-hover); }
-a:hover { color: #073F39; }
+a { color: var(--brand-text); }
+a:hover { color: var(--brand-text-hover); }
 img { max-width: 100%; display: block; }
 button { font: inherit; color: inherit; }
-:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+:focus-visible { outline: 3px solid var(--brand-text); outline-offset: 2px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .muted { color: var(--ink-2); }
 .small { font-size: .875rem; }
@@ -69,7 +72,7 @@ button { font: inherit; color: inherit; }
 .btn:active { transform: translateY(1px); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn.primary { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); font-weight: 700; }
-.btn.primary:hover { background: var(--brand-hover); border-color: var(--brand-hover); color: #fff; }
+.btn.primary:hover { background: var(--brand-hover); border-color: var(--brand-hover); color: var(--brand-ink); }
 .btn.dark { background: var(--ink); border-color: var(--ink); color: #fff; }
 .btn.soft { background: var(--surface-2); border-color: var(--surface-2); }
 .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
@@ -99,7 +102,7 @@ input, select, textarea {
   background: var(--surface); color: var(--ink); font: inherit; font-size: 1rem; font-weight: 400;
 }
 textarea { min-height: 88px; padding: 12px 14px; resize: vertical; }
-input:focus, select:focus, textarea:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--brand-text); box-shadow: 0 0 0 3px var(--brand-soft); }
 input[aria-invalid="true"] { border-color: var(--danger); }
 input[type=checkbox], input[type=radio] { width: 18px; height: 18px; min-height: 0; padding: 0; accent-color: var(--brand); }
 .field-error { color: var(--danger-ink); font-size: .875rem; font-weight: 600; min-height: 1.2em; margin: 0; }

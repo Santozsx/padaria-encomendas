@@ -204,7 +204,9 @@ Arquivos SQL:
 - `supabase/migrations/005_dados_exemplo.sql`: categorias, horários e produtos de exemplo da Padaria Bela Vista.
 - `supabase/migrations/006_horarios_30min.sql`: horários de retirada/entrega de 30 em 30 minutos (07:00 às 18:00) em todas as lojas. Lojas novas já nascem assim.
 - `supabase/migrations/007_licencas.sql`: licenças do SaaS (plano, teste grátis, vencimento, tolerância, cortesia, preço especial e histórico das cobranças do Asaas). Lojas que já existiam viram **cortesia**.
-- `supabase/banco_completo.sql`: 001 + 004 + 005 + 006 + 007 num arquivo só, para instalação nova.
+- `supabase/migrations/009_identidade_visual.sql`: aparência de cada loja (cor principal, cor secundária e logo). Sem ela, as lojas ficam com o visual padrão.
+- `supabase/banco_completo.sql`: 001 + 004 + 005 + 006 + 007 + 009 num arquivo só, para instalação nova.
+- (A `008_notas_fiscais.sql` está guardada em `futuro/nota-fiscal/`.)
 
 ### Segurança (RLS e permissões)
 
@@ -259,6 +261,7 @@ padaria/
    - **Já usava o sistema antes das lojas:** execute `supabase/migrations/004_estabelecimentos.sql`. Ele cria a "Padaria Bela Vista" e move para ela todos os pedidos, produtos, horários e funcionários existentes. Pode rodar mais de uma vez sem duplicar nada.
    - **Horários de 30 em 30 minutos:** execute `supabase/migrations/006_horarios_30min.sql` (depois do 004). Troca as faixas antigas por 07:00, 07:30 … 18:00 em todas as lojas; as antigas ficam desativadas, sem afetar pedidos já feitos.
    - **Licenças (SaaS):** execute `supabase/migrations/007_licencas.sql` (depois do 006). As lojas que já existem viram **cortesia**; lojas novas ganham o teste grátis. Veja a seção 8.
+   - **Aparência por loja (logo e cores):** execute `supabase/migrations/009_identidade_visual.sql`. Veja a seção 9.
 3. **Authentication → Sign In / Providers → Email**: **desative "Allow new users to sign up"**. Só você cria os usuários da equipe.
 4. **Database → Publications → `supabase_realtime`**: confira se `orders`, `order_items` e `products` estão marcadas (a migração já faz isso).
 5. **Project Settings → API**: copie `Project URL`, `anon public` e `service_role`.
@@ -383,7 +386,11 @@ Erros sempre no formato `{ "error": { "code": "DATA_ANTECEDENCIA", "message": "A
 | GET | `/api/public/stores/:slug/availability?date=` | público | vagas restantes por faixa de horário na data |
 | POST | `/api/public/stores/:slug/orders` | público (10 a cada 10 min por IP) | cria pedido **nessa loja** |
 | GET | `/api/public/stores/:slug/orders/:code?phone=` | público | acompanhamento (exige o telefone) |
-| GET | `/api/staff/me` | equipe | usuário, papel e **loja** (`establishment`) |
+| GET | `/api/public/logos/:slug?v=` | público | logo da loja (imagem, cache longo) |
+| GET | `/api/public/brand-palette?p=&s=` | público | prévia da paleta de cores (contraste calculado) |
+| GET | `/api/staff/me` | equipe | usuário, papel e **loja** (`establishment`, com `brand`: cores e logo) |
+| GET/PUT | `/api/staff/branding` | **só admin** | aparência da loja `{ brand_color?, brand_color_2?, logo? (base64), remove_logo? }` |
+| GET/PUT | `/api/platform/establishments/:id/branding` | dono do sistema | o mesmo, para qualquer loja |
 | GET | `/api/staff/time-slots` | equipe | horários da loja |
 | POST | `/api/staff/categories` | atendimento/admin | cria categoria `{ name }` |
 | GET | `/api/staff/orders?from&to&status&fulfillment&q` | equipe | lista com itens |
@@ -487,13 +494,33 @@ A regra está no servidor **e** no banco (`license_state` + gatilho que recusa p
 1. Crie um repositório **privado** no GitHub com esta pasta (o `.gitignore` já deixa o `.env` de fora).
 2. Em <https://render.com>: **New → Blueprint**, escolha o repositório. O arquivo `render.yaml` já define build, start e as variáveis. Preencha as marcadas como secretas (Supabase, `PUBLIC_URL`, `ASAAS_API_KEY`).
 3. Use um plano pago (o gratuito "dorme" e perde pedidos/webhooks). Depois, em **Settings → Custom Domain**, ligue um domínio seu (ex.: `app.suapadaria.com.br`) e coloque esse endereço em `PUBLIC_URL`.
-4. Rode no Supabase as migrações que faltarem (até a `007_licencas.sql`).
+4. Rode no Supabase as migrações que faltarem (até a `009_identidade_visual.sql`).
 5. No APK da cozinha, use o endereço da nuvem (ex.: `https://app.suapadaria.com.br`) em vez do IP do computador.
 
 Outras opções que funcionam igual: Railway, Fly.io ou uma VPS com Node 22 (`cd backend && npm ci && npm run start:cloud`).
 
-## 9. Próximos passos sugeridos
+## 9. Aparência de cada loja (logo e cores)
 
+Cada padaria tem o próprio visual: **logo**, **cor principal** (botões, destaques, dia e horário escolhidos, links) e **cor secundária** opcional (menu lateral do atendimento e detalhes da loja).
+
+**Onde configura:**
+- **Atendimento → Aparência** (administrador da loja).
+- **Painel do sistema → Aparência**, na linha da loja (você deixa pronto antes de entregar ao cliente).
+
+**Onde aparece:**
+- **Loja do cliente e acompanhamento:** logo no topo, cores, **ícone e nome da padaria na aba do navegador** e na prévia do link no WhatsApp. A página já sai do servidor com o visual da loja, sem "piscar" o padrão.
+- **Atendimento:** logo e cores no menu, botões e fundos.
+- **Tela da cozinha (TV):** logo na barra de cima e uma faixa na cor da loja. O fundo continua escuro e as cores de status (a produzir, fazendo, pronto, atrasado) não mudam, para a leitura de longe. No APK, gere de novo (opção 5 do `iniciar.bat`) para aparecer.
+
+**Como funciona:**
+- Ao enviar a logo, o sistema sugere as cores tiradas dela.
+- Qualquer cor fica legível: se a cor for clara (ex.: amarelo), o texto dos botões fica escuro; se for "do meio" (ex.: rosa), o botão é escurecido um pouco. Links e ícones usam uma versão que dá para ler em fundo branco.
+- A logo aceita PNG, JPG ou WebP (PNG com fundo transparente fica melhor). Ela é reduzida no navegador para até 512 px antes de enviar e conferida no servidor (tipo real do arquivo e até 512 KB). SVG não é aceito, por segurança.
+- A imagem fica no banco (`establishment_logos`) e é servida em `/api/public/logos/<link-da-loja>`, com cache longo (o endereço muda quando a logo muda).
+
+## 10. Próximos passos sugeridos
+
+- Nota fiscal (NFC-e) pela Focus NFe: **já está pronta e guardada** em `futuro/nota-fiscal/`. Veja o `LEIA-ME.md` de lá para reativar.
 - Pagamento antecipado via Pix (webhook do provedor → nova coluna `payment_status`).
 - Notificação ao cliente no WhatsApp quando o pedido ficar pronto.
 - Bloqueio de datas (feriados) e horário de corte (ex.: pedidos para amanhã só até 18h): basta uma tabela `blocked_dates` e uma regra no trigger `trg_orders_rules`.

@@ -9,6 +9,7 @@ import { createTeamService } from './services/team.service.js';
 import { createPlatformService } from './services/platform.service.js';
 import { createBillingService } from './services/billing.service.js';
 import { createAsaas } from './lib/asaas.js';
+import { createBrandingService } from './services/branding.service.js';
 import { createAuth } from './middleware/auth.js';
 import { createApp } from './app.js';
 
@@ -38,6 +39,7 @@ const deps = {
     webhookToken: config.ASAAS_WEBHOOK_TOKEN,
     publicUrl: config.PUBLIC_URL,
   }),
+  branding: createBrandingService(db, { settings }),
   auth: createAuth(db),
 };
 
@@ -50,11 +52,13 @@ if (deps.billing.enabled) {
 
 const app = createApp(deps);
 const server = app.listen(config.PORT, () => {
-  console.log(`API e telas rodando em http://localhost:${config.PORT}`);
-  console.log(`  Loja (link): http://localhost:${config.PORT}/loja/padaria-bela-vista`);
-  console.log(`  Atendimento: http://localhost:${config.PORT}/atendimento`);
-  console.log(`  Cozinha:     http://localhost:${config.PORT}/cozinha/`);
-  console.log(`  Painel do sistema: http://localhost:${config.PORT}/plataforma`);
+  // Na nuvem mostra o endereço público; no computador, o localhost
+  const base = config.PUBLIC_URL || `http://localhost:${config.PORT}`;
+  console.log(`API e telas rodando em ${base} (porta ${config.PORT})`);
+  console.log(`  Loja (link): ${base}/loja/padaria-bela-vista`);
+  console.log(`  Atendimento: ${base}/atendimento`);
+  console.log(`  Cozinha:     ${base}/cozinha/`);
+  console.log(`  Painel do sistema: ${base}/plataforma`);
   console.log(deps.billing.enabled
     ? `  Cobrança das licenças: Asaas (${config.ASAAS_ENV === 'production' ? 'PRODUÇÃO' : 'sandbox de testes'})`
     : '  Cobrança das licenças: desligada (sem ASAAS_API_KEY no .env)');

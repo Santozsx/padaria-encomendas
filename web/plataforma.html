@@ -31,12 +31,13 @@
   <!-- ========== APP ========== -->
   <div id="app-view" class="app hidden">
     <nav class="sidebar" aria-label="Menu principal">
+      <button type="button" class="side-toggle" data-side-toggle aria-expanded="false" aria-label="Abrir ou fechar o menu"><span data-icon="menu"></span><span class="lbl">Menu</span></button>
       <div class="side-brand">
         <span class="logo-mark" data-icon="lock"></span>
         <span><strong>Painel do sistema</strong><small>Dono do sistema</small></span>
       </div>
-      <button type="button" class="nav-item" data-go="list" aria-current="page"><span data-icon="building"></span>Estabelecimentos</button>
-      <a class="nav-item" href="/atendimento"><span data-icon="board"></span>Atendimento</a>
+      <button type="button" class="nav-item" data-go="list" aria-current="page"><span data-icon="building"></span><span class="lbl">Estabelecimentos</span></button>
+      <a class="nav-item" href="/atendimento"><span data-icon="board"></span><span class="lbl">Atendimento</span></a>
       <div class="side-foot">
         <div class="side-user">
           <span><strong id="user-email"></strong><small>Dono do sistema</small></span>
@@ -159,6 +160,15 @@
         <button type="submit" class="btn primary" value="ok">Salvar</button>
       </div>
     </form>
+  </dialog>
+
+  <!-- Aparência da loja (logo + cores) -->
+  <dialog id="brand-dialog" class="confirm brand-dialog">
+    <div class="brand-dialog-head">
+      <h3>Aparência — <span id="brand-store"></span></h3>
+      <button type="button" class="btn ghost sm" id="brand-close">Fechar</button>
+    </div>
+    <div id="brand-dialog-body"></div>
   </dialog>
 
   <!-- Novo acesso (funcionário) -->

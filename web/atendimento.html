@@ -30,17 +30,19 @@
   <!-- ========== APP ========== -->
   <div id="app-view" class="app hidden">
     <nav class="sidebar" aria-label="Menu principal">
+      <button type="button" class="side-toggle" data-side-toggle aria-expanded="false" aria-label="Abrir ou fechar o menu"><span data-icon="menu"></span><span class="lbl">Menu</span></button>
       <div class="side-brand">
-        <span class="logo-mark" data-icon="bread"></span>
+        <span class="side-logo"><span class="logo-mark" data-icon="bread"></span></span>
         <span><strong id="store-name">Padaria</strong><small>Atendimento</small></span>
       </div>
-      <button type="button" class="nav-item" data-tab="orders" aria-current="page"><span data-icon="board"></span>Pedidos <span class="nav-count" id="open-count"></span></button>
-      <button type="button" class="nav-item admin-only hidden" data-tab="sales"><span data-icon="chart"></span>Vendas e relatórios</button>
-      <button type="button" class="nav-item" data-tab="products"><span data-icon="bread"></span>Produtos</button>
-      <button type="button" class="nav-item admin-only hidden" data-tab="team"><span data-icon="users"></span>Equipe e acessos</button>
-      <button type="button" class="nav-item admin-only hidden" data-tab="billing"><span data-icon="key"></span>Assinatura</button>
-      <a class="nav-item" href="/cozinha/" target="_blank" rel="noopener"><span data-icon="tv"></span>Tela da cozinha</a>
-      <a class="nav-item hidden" id="platform-link" href="/plataforma"><span data-icon="lock"></span>Painel do sistema</a>
+      <button type="button" class="nav-item" data-tab="orders" aria-current="page"><span data-icon="board"></span><span class="lbl">Pedidos</span> <span class="nav-count" id="open-count"></span></button>
+      <button type="button" class="nav-item admin-only hidden" data-tab="sales"><span data-icon="chart"></span><span class="lbl">Vendas e relatórios</span></button>
+      <button type="button" class="nav-item" data-tab="products"><span data-icon="bread"></span><span class="lbl">Produtos</span></button>
+      <button type="button" class="nav-item admin-only hidden" data-tab="team"><span data-icon="users"></span><span class="lbl">Equipe e acessos</span></button>
+      <button type="button" class="nav-item admin-only hidden" data-tab="brand"><span data-icon="palette"></span><span class="lbl">Aparência</span></button>
+      <button type="button" class="nav-item admin-only hidden" data-tab="billing"><span data-icon="key"></span><span class="lbl">Assinatura</span></button>
+      <a class="nav-item" href="/cozinha/" target="_blank" rel="noopener"><span data-icon="tv"></span><span class="lbl">Tela da cozinha</span></a>
+      <a class="nav-item hidden" id="platform-link" href="/plataforma"><span data-icon="lock"></span><span class="lbl">Painel do sistema</span></a>
       <div class="side-link">
         <small>Link para clientes</small>
         <div class="side-link-row">
@@ -176,6 +178,14 @@
     </main>
 
     <!-- ----- ASSINATURA (somente admin) ----- -->
+    <main id="tab-brand" class="panel hidden">
+      <div class="panel-head">
+        <div class="title-stack"><h1>Aparência</h1><span class="muted">Logo e cores da sua padaria na loja, no atendimento e na TV da cozinha</span></div>
+        <a class="btn" id="brand-open-store" target="_blank" rel="noopener"><span data-icon="external"></span>Ver a loja</a>
+      </div>
+      <div id="brand-body"></div>
+    </main>
+
     <main id="tab-billing" class="panel hidden">
       <div class="panel-head">
         <div class="title-stack"><h1>Assinatura</h1><span class="muted">Licença de uso do sistema para esta loja</span></div>

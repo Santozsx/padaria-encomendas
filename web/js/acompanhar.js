@@ -1,5 +1,5 @@
 // Acompanhamento do pedido pelo cliente (nº + telefone).
-import { api, esc, money, dateBr, statusBadge, icon, hydrateIcons } from './common.js';
+import { api, esc, money, dateBr, statusBadge, icon, hydrateIcons, applyBrand, placeLogo } from './common.js';
 
 hydrateIcons();
 const SLUG = (location.pathname.match(/^\/loja\/([a-z0-9-]+)/) || [])[1] || null;
@@ -18,6 +18,8 @@ document.querySelectorAll('[data-store-link]').forEach((a) => { a.href = `/loja/
 api(STORE_API).then((c) => {
   document.getElementById('store-name').textContent = c.storeName;
   document.title = `Acompanhar pedido — ${c.storeName}`;
+  applyBrand(c.brand);
+  placeLogo(document.querySelector('.brand-mark'), c.brand);
 }).catch(() => { document.getElementById('track-error').textContent = 'Loja não encontrada. Confira o link.'; });
 
 async function consult(code, phone) {

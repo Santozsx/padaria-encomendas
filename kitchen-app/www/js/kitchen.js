@@ -36,6 +36,7 @@ const ICON = {
   truck: '<path d="M3 6h11v10H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',
   alert: '<path d="M12 9v4M12 17h.01M10.3 3.9L2 18a2 2 0 0 0 1.7 3h16.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',
   check: '<path d="M5 12l5 5L20 7"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   soundOn: '<path d="M11 5L6 9H3v6h3l5 4zM16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"/>',
   soundOff: '<path d="M11 5L6 9H3v6h3l5 4zM17 9l5 6M22 9l-5 6"/>',
 };
@@ -189,6 +190,29 @@ async function boot() {
   await startBoard();
 }
 
+// Cores e logo da padaria: faixa na cor da loja + logo na barra de cima.
+// O fundo continua escuro (leitura de longe); as cores de status não mudam.
+function applyBrand(brand) {
+  const root = document.documentElement;
+  const color = brand?.vars?.['--brand-raw'] || brand?.primary || brand?.secondary;
+  if (color) root.style.setProperty('--k-brand', color);
+  else root.style.removeProperty('--k-brand');
+  const box = $('#k-brand');
+  box.replaceChildren();
+  if (brand?.logo_url) {
+    const img = document.createElement('img');
+    img.alt = '';
+    img.src = `${state.api}${brand.logo_url}`;
+    img.onerror = () => box.classList.add('hidden');
+    box.append(img);
+    box.classList.remove('hidden');
+    const icon = document.querySelector('link[rel="icon"]');
+    if (icon) { icon.removeAttribute('type'); icon.href = img.src; }
+  } else {
+    box.classList.add('hidden');
+  }
+}
+
 let started = false;
 async function startBoard() {
   try {
@@ -200,6 +224,7 @@ async function startBoard() {
     state.est = me.establishment;
     state.config.timezone = me.establishment.timezone;
     document.title = `Cozinha — ${me.establishment.name}`;
+    applyBrand(me.establishment.brand);
   } catch (e) {
     return showLogin(e.message);
   }
@@ -339,50 +364,81 @@ function laneInfo(slot, orders) {
   return { kind: 'later', tag: `EM ${h ? `${h}H` : ''}${h && m ? String(m).padStart(2, '0') : (h ? '' : `${m} MIN`)}` };
 }
 
-function orderCard(o) {
+// Comanda (card) de um pedido: número grande, horário, cliente, itens
+// (toque para avançar: A PRODUZIR → FAZENDO → PRONTO) e "Tudo pronto".
+function orderCard(o, slotLabel) {
   const isNew = (state.newIds.get(o.id) ?? 0) > Date.now();
+  const done = o.items.filter((i) => i.status === 'produzido').length;
+  const pct = o.items.length ? Math.round((done / o.items.length) * 100) : 0;
   return `
-    <article class="ocard ${isNew ? 'is-new' : ''}">
-      <div class="ohead">
-        <span class="ocode">#${o.code}</span>
-        <span class="owho">${isNew ? '<span class="new-flag">NOVO</span>' : ''}${svg(o.fulfillment === 'entrega' ? 'truck' : 'store')}<span>${esc(firstName(o.customer_name))}</span></span>
+    <article class="ticket ${isNew ? 'is-new' : ''}">
+      <header class="t-head">
+        <span class="t-code">#${o.code}</span>
+        <span class="t-meta">
+          <span class="t-time">${svg('clock')}${esc(slotLabel)}</span>
+          <span class="t-who">${isNew ? '<span class="new-flag">NOVO</span>' : ''}${svg(o.fulfillment === 'entrega' ? 'truck' : 'store')}<span>${esc(firstName(o.customer_name))}</span></span>
+        </span>
+      </header>
+      <div class="t-bar" aria-hidden="true"><i style="width:${pct}%"></i></div>
+      <div class="t-body">
+        <span class="t-progress">${done} DE ${o.items.length} ${o.items.length === 1 ? 'ITEM PRONTO' : 'ITENS PRONTOS'} · ${o.fulfillment === 'entrega' ? 'ENTREGA' : 'RETIRADA'}</span>
+        ${o.notes ? `<p class="onote">${svg('alert')}<span>${esc(o.notes)}</span></p>` : ''}
+        ${o.items.map((i) => `
+          <button type="button" class="item ${i.status}" data-nav data-key="i${i.id}" data-item="${i.id}" data-status="${i.status}" data-name="${esc(i.product_name)}">
+            <span class="qty"><b>${i.quantity}</b><small>${esc(i.unit_label)}</small></span>
+            <span class="name"><span>${esc(i.product_name)}</span>${i.notes ? `<span class="inote">${svg('alert')}${esc(i.notes)}</span>` : ''}</span>
+            <span class="st">${ITEM_LABEL[i.status]}</span>
+          </button>`).join('')}
       </div>
-      ${o.notes ? `<p class="onote">${svg('alert')}<span>${esc(o.notes)}</span></p>` : ''}
-      ${o.items.map((i) => `
-        <button type="button" class="item ${i.status}" data-nav data-key="i${i.id}" data-item="${i.id}" data-status="${i.status}" data-name="${esc(i.product_name)}">
-          <span class="qty"><b>${i.quantity}</b><small>${esc(i.unit_label)}</small></span>
-          <span class="name"><span>${esc(i.product_name)}</span>${i.notes ? `<span class="inote">${svg('alert')}${esc(i.notes)}</span>` : ''}</span>
-          <span class="st">${ITEM_LABEL[i.status]}</span>
-        </button>`).join('')}
-      <button type="button" class="ready-btn" data-nav data-key="o${o.id}" data-ready="${o.id}">${svg('check')}Tudo pronto</button>
+      <footer class="t-foot">
+        <button type="button" class="ready-btn" data-nav data-key="o${o.id}" data-ready="${o.id}">${svg('check')}Tudo pronto</button>
+      </footer>
+    </article>`;
+}
+
+// Comanda já pronta: pequena, verde, no fim do grupo (só para conferência)
+function doneCard(o) {
+  return `
+    <article class="ticket done">
+      <header class="t-head">
+        <span class="t-code">#${o.code}</span>
+        <span class="t-meta"><span class="done-tag">${svg('check')}PRONTO</span>
+          <span class="t-who">${svg(o.fulfillment === 'entrega' ? 'truck' : 'store')}<span>${esc(firstName(o.customer_name))}</span></span></span>
+      </header>
     </article>`;
 }
 
 function renderLanes() {
   const { orders, time_slots: slots } = state.board;
-  // Com horários de 30 em 30 min a loja tem ~23 horários: mostrar todos
-  // deixaria a TV ilegível. Aparecem só os horários que têm pedido no dia.
-  const lanes = [];
+  // Comandas agrupadas por horário. Com horários de 30 em 30 min a loja tem
+  // ~23 horários: aparecem só os que têm pedido no dia.
+  const groups = [];
   for (const o of orders) {
-    if (lanes.some((l) => l.id === o.time_slot_id)) continue;
+    if (groups.some((l) => l.id === o.time_slot_id)) continue;
     const s = slots.find((x) => x.id === o.time_slot_id);
-    lanes.push(s ? { ...s } : { id: o.time_slot_id, label: o.time_slot_label, start_time: o.slot_start, end_time: o.slot_start });
+    groups.push(s ? { ...s } : { id: o.time_slot_id, label: o.time_slot_label, start_time: o.slot_start, end_time: o.slot_start });
   }
-  lanes.sort((a, b) => a.start_time.localeCompare(b.start_time));
+  groups.sort((a, b) => a.start_time.localeCompare(b.start_time));
   let late = 0;
-  $('#lanes').style.setProperty('--lanes', Math.max(1, lanes.length));
-  $('#lanes').innerHTML = lanes.map((l) => {
-    const list = orders.filter((o) => o.time_slot_id === l.id).sort((a, b) => a.code - b.code);
-    const info = laneInfo(l, list);
+  $('#lanes').innerHTML = groups.map((g) => {
+    const list = orders.filter((o) => o.time_slot_id === g.id).sort((a, b) => a.code - b.code);
+    const info = laneInfo(g, list);
     const active = list.filter((o) => o.status !== 'pronto');
     const ready = list.filter((o) => o.status === 'pronto');
     if (info.kind === 'late') late += active.length;
+    const label = hhmm(g.start_time || '') || g.label;
     return `
-      <section class="lane ${info.kind}" aria-label="Faixa ${esc(l.label)}">
-        <header class="lane-head"><span class="lane-time">${esc(l.label)}</span><span class="lane-tag">${esc(info.tag)}</span></header>
-        ${active.map(orderCard).join('')}
-        ${ready.map((o) => `<div class="done-row"><span class="c">#${o.code}</span><span class="t">${o.fulfillment === 'entrega' ? 'Entrega' : 'Retirada'} · ${esc(firstName(o.customer_name))}</span><span class="p">PRONTO</span></div>`).join('')}
-        ${list.length ? '' : '<div class="lane-empty">Nada nesta faixa</div>'}
+      <section class="slot-group ${info.kind}" aria-label="Horário ${esc(g.label)}">
+        <header class="slot-head">
+          <span class="slot-time">${esc(label)}</span>
+          <span class="lane-tag">${esc(info.tag)}</span>
+          <span class="slot-count">${plural(active.length, 'a fazer', 'a fazer')}${ready.length ? ` · ${plural(ready.length, 'pronto', 'prontos')}` : ''}</span>
+          <span class="slot-line" aria-hidden="true"></span>
+        </header>
+        <div class="tickets">
+          ${active.map((o) => orderCard(o, label)).join('')}
+          ${ready.map(doneCard).join('')}
+        </div>
       </section>`;
   }).join('') || '<div class="lane-empty lanes-none">Nenhum pedido para produzir nesta data.</div>';
   const chip = $('#late-chip');
@@ -500,7 +556,11 @@ function bindEvents() {
     e.preventDefault();
     let url = e.target.api.value.trim().replace(/\/+$/, '');
     // Facilita no controle remoto: "192.168.0.10:3000" vira "http://192.168.0.10:3000"
-    if (url && !/^https?:\/\//i.test(url)) url = `http://${url}`;
+    // e um endereço da internet ("minhapadaria.onrender.com") vira "https://..."
+    if (url && !/^https?:\/\//i.test(url)) {
+      const local = /^(localhost|[\d.]+)(:\d+)?$/i.test(url);
+      url = `${local ? 'http' : 'https'}://${url}`;
+    }
     if (/^http:\/\/[\d.]+$/.test(url)) url += ':3000'; // só o IP: usa a porta padrão
     try { new URL(url); } catch { $('#setup-error').textContent = 'Endereço inválido. Ex.: 192.168.0.10:3000'; return; }
     LS.set('k-api', url);

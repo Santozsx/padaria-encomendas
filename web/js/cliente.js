@@ -1,5 +1,5 @@
 // Tela do cliente: catálogo → data/horário/dados → sucesso.
-import { api, money, esc, toast, dateBr, phoneBr, icon, hydrateIcons, norm, CATEGORY_TILES } from './common.js';
+import { api, money, esc, toast, dateBr, phoneBr, icon, hydrateIcons, norm, CATEGORY_TILES, applyBrand, placeLogo } from './common.js';
 
 const $ = (sel) => document.querySelector(sel);
 // Cada loja tem seu link: /loja/<slug>. Tudo (cardápio, pedido, carrinho) é daquela loja.
@@ -476,6 +476,9 @@ function showNotFound(err) {
 function fillStoreInfo(c) {
   document.title = `Encomendas — ${c.storeName}`;
   $('#store-name').textContent = c.storeName;
+  // cores e logo da padaria (o servidor já manda a página pronta; aqui é o reforço)
+  applyBrand(c.brand);
+  placeLogo($('.brand-mark'), c.brand);
   $('#brand-link').href = `/loja/${SLUG}`;
   $('#track-link').href = `/loja/${SLUG}/acompanhar`;
   if (c.address) $('#pickup-address').textContent = `Sem taxa · ${c.address}`;
